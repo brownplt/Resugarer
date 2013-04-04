@@ -37,9 +37,9 @@
   ;  * macro syntax (else 2),
   ;  * function calls (+ 2 3)
   
-  (struct t-macro (name origin) #:transparent)
+  (struct t-macro (name origins) #:transparent)
   (struct t-syntax () #:transparent)
-  (struct t-apply (origin) #:transparent)
+  (struct t-apply (origins) #:transparent)
   
   ; Origin : o-user
   ;        | o-eval
@@ -118,8 +118,8 @@
   ; Compile a racket-like macro pattern into a Pattern.
   ; Guarantees that no ellipses pattern is variableless.
   ; TODO: Verify that variables are unique
-  (define (sexpr->pattern p lits macs vars origin)
-    (let ((sexpr->pattern (λ (p) (sexpr->pattern p lits macs vars origin))))
+  (define (sexpr->pattern p lits macs vars origins)
+    (let ((sexpr->pattern (λ (p) (sexpr->pattern p lits macs vars origins))))
       (cond [(symbol? p)
              (cond
                [(member p lits)                 (literal p)]
@@ -138,19 +138,19 @@
                 (plist (t-syntax) (map sexpr->pattern ps))]
                [(list ps ... q '... rs ...) ; (P1 ... Pn Q* R1 ... Rm)
                 (if (and (cons? ps) (member (car ps) macs))
-                    (make-ellipsis (t-macro (car ps) origin)
+                    (make-ellipsis (t-macro (car ps) origins)
                                    (map sexpr->pattern (cdr ps))
                                    (sexpr->pattern q)
                                    (map sexpr->pattern rs))
-                    (make-ellipsis (t-apply origin)
+                    (make-ellipsis (t-apply origins)
                                    (map sexpr->pattern ps)
                                    (sexpr->pattern q)
                                    (map sexpr->pattern rs)))]
                [(list ps ...) ; (P1 ... Pn)
                 (if (and (cons? ps) (member (car ps) macs))
-                    (plist (t-macro (car ps) origin)
+                    (plist (t-macro (car ps) origins)
                            (map sexpr->pattern (cdr ps)))
-                    (plist (t-apply origin)
+                    (plist (t-apply origins)
                            (map sexpr->pattern ps)))])])))
   
   
@@ -245,15 +245,29 @@
   ;;;;;;;;;;;;;;
   
   
-  (define (minus x y [o #f]) ; o: expected origin, or #f if any
-    (let ((minus (λ (x y) (minus x y o))))
+  (define (minus x y [origin #f]) ; o: expected origin, or #f if any
+    (let ((minus (λ (x y) (minus x y origin))))
+    (define (fail) (raise (CantMatch x y)))
+    (define (succeed) empty-env)
+    #|(display (format "\t~a - ~a\n" (show-pattern x) (show-pattern y)))|#
+      
+    (define (check-origin os)
+      (if (and origin (or (empty? os) (not (equal? (car os) origin))))
+          (fail)
+          (void)))
     
     (define (type-minus t1 t2)
       (match* [t1 t2]
-        [[(t-syntax)    (t-syntax)]    (t-syntax)]
-        [[(t-apply o)   (t-apply _)]   (t-apply o)]
-        [[(t-macro m o) (t-macro m _)] (t-macro m 0)]
-        [[_ _]                         (raise (CantMatch t1 t2))]))
+        [[(t-syntax) (t-syntax)]
+         (t-syntax)]
+        [[(t-apply os) (t-apply _)]
+         (check-origin os)
+         (t-apply os)]
+        [[(t-macro m os) (t-macro m _)]
+         (check-origin os)
+         (t-macro m os)]
+        [[_ _]
+         (raise (CantMatch t1 t2))]))
     
     (define (minuses xs ys)
       (apply hash-union (map minus xs ys)))
@@ -269,8 +283,6 @@
                            (map minus r (repeat (length r) y))))
 
       
-    (let ((fail (λ () (raise (CantMatch x y))))
-          (succeed (λ () empty-env)))
       ;(display (format "\t\tMatch ~a - ~a\n" (show-pattern x) (show-pattern y)))
       (match* (x y)
         [((literal x) (literal x))     (succeed)]
@@ -313,7 +325,7 @@
                   (minuses l1:l l2)
                   (ellipsis-minuses t l1:r m1 r1:l m2)
                   (minuses r1:r r2)))))]
-        [(_ _) (fail)]))))
+        [(_ _) (fail)])))
   
   
   ;;;;;;;;;;;;;;;;;;

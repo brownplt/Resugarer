@@ -26,12 +26,12 @@
                                      '(lit ...)
                                      '(name mac ...)
                                      #f
-                                     'Pandora)] ...]
+                                     (list))] ...]
            (let [[qc (sexpr->pattern 'q
                                      '(lit ...)
                                      '(name mac ...)
                                      (set->list (free-vars pc))
-                                     'Pandora)] ...]
+                                     (list))] ...]
              (add-global-literals! '(name lit ...))
              (Macro 'name (list (MacroCase pc qc) ...)))))]))
   
@@ -40,8 +40,8 @@
       (let [[o (o-macro (Macro-name m) i n)]]
         (match t
           [(t-syntax)       (t-syntax)]
-          [(t-apply _)      (t-apply o)]
-          [(t-macro m _)    (t-macro m o)])))
+          [(t-apply _)      (t-apply (list o))]
+          [(t-macro m _)    (t-macro m (list o))])))
     (define (instantiate-pattern p i n)
       (let [[rec (λ (p) (instantiate-pattern p i n))]]
         (match p
@@ -56,7 +56,7 @@
     (define (instantiate-pair i n c)
       (match c
         [(MacroCase left right)
-         (MacroCase (instantiate-pattern left i n)
+         (MacroCase left
                     (instantiate-pattern right i n))]))
     (match m
       [(Macro name cases)
@@ -101,10 +101,10 @@
        (let* [[c (list-ref (Macro-cases (lookup-macro m)) n)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-         #|(display (format "\tUnexpand ~a (~a => ~a)\n"
+         #|(display (format "Unexpand ~a (~a => ~a)\n"
                           (show-pattern x)
                           (show-pattern lhs)
-                          (show-pattern rhs))) |#
+                          (show-pattern rhs)))|#
          (substitute (minus x rhs origin) lhs))]))
   
   (define (expand e)
@@ -117,7 +117,7 @@
            (plist t (map expand ps)))]))
   
   (define (unexpand p)
-    (define (get-origin t)
+    (define (get-origins t)
       (match t
         [(t-syntax)      #f] ; impossible?
         [(t-apply o)     o]
@@ -126,28 +126,11 @@
       (match p
         [(constant c)   (constant c)]
         [(literal l)    (literal l)]  ; impossible?
-        [(plist t ps)   (match (get-origin t)
-                          [(o-macro m i n)
+        [(plist t ps)   (match (get-origins t)
+                          [(cons (o-macro m i n) os)
                            (unexpand (unexpand-macro p (o-macro m i n)))]
                           [_ (plist t (map rec ps))])]))
     (with-handlers [[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
                      (λ (x) #f)]]
       (rec p)))
-  
-  
-  ;;; Debugging ;;;
-  #|
-  (define (show-pattern x)
-    (match x
-      [(pvar v)           (symbol->string v)]
-      [(literal x)        (format ":~a" (symbol->string x))]
-      [(constant x)       (format "'~a" (show x))]
-      [(plist t elems)    (format "(~a)" (string-join (map show-pattern elems) " "))]
-      [(ellipsis t l m r) (format "(~a)" (string-join
-                                          (append (map show-pattern l)
-                                                  (list (show-pattern m))
-                                                  (list "...")
-                                                  (map show-pattern r))
-                                          " "))]))
-|#
 )
