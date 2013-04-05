@@ -3,13 +3,13 @@
    sexpr->pattern
    unify minus substitute
    attempt-unification unification-failure?
-   add-global-literals! is-macro-literal? all-macro-literals
+   add-global-literals! is-macro-literal? all-macro-literals nominal?
    (struct-out pvar) (struct-out literal) (struct-out constant)
      (struct-out plist) (struct-out ellipsis)
    (struct-out inter-list) (struct-out inter-ellipsis)
    (struct-out CantUnify) (struct-out CantMatch) (struct-out OccursCheck)
    (struct-out t-macro) (struct-out t-syntax) (struct-out t-apply)
-   (struct-out o-user) (struct-out o-macro) (struct-out o-eval)
+   (struct-out o-macro) (struct-out o-branch) (struct-out tag)
    ; testing:
    show-pattern
    inter-list-envs free-vars replace bind empty-env singleton-env)
@@ -31,23 +31,24 @@
   (struct constant (name) #:transparent) ; e.g. lambda
   (struct plist (type elems) #:transparent)
   (struct ellipsis (type head rep tail) #:transparent)
+  (struct tag (term origin) #:transparent)
   
   ; Pattern "Types" - distinguish between
   ;  * macro calls (or 2 3),
   ;  * macro syntax (else 2),
   ;  * function calls (+ 2 3)
   
-  (struct t-macro (name origins) #:transparent)
+  (struct t-macro (name) #:transparent)
   (struct t-syntax () #:transparent)
-  (struct t-apply (origins) #:transparent)
+  (struct t-apply () #:transparent)
+  (struct t-value () #:transparent)
   
   ; Origin : o-user
   ;        | o-eval
   ;        | o-macro macro-name expansion-nonce macro-case
   
-  (struct o-user () #:transparent)
   (struct o-macro (m i c) #:transparent)
-  (struct o-eval () #:transparent)
+  (struct o-branch (m i c) #:transparent)
   
   ; Inter : Pattern
   ;       | inter-list (I1 ... In)
@@ -64,6 +65,13 @@
     (if (set-empty? (free-vars m))
         (error (format "Empty ellipses: ~a" m))
         (ellipsis t l m r)))
+  
+  ; 'Nominal' terms aren't terms proper and can't have origins.
+  (define (nominal? p)
+    (match p
+      [(plist (t-syntax) _)         #t]
+      [(ellipsis (t-syntax) _ _ _)  #t]
+      [_                            #f]))
   
   
   ; Keep a global list of macro keywords,
@@ -84,12 +92,13 @@
   (define (show-pattern x [abbreviated #f])
     (define (show-type t)
       (match t
-        [(t-macro m _) (format "~a " m)]
+        [(t-macro m) (format "~a " m)]
         [(t-syntax)    (if abbreviated "" "^ ")]
-        [(t-apply _)   ""]
+        [(t-apply)   ""]
         [_             "[Not a type!]"])) ; !!!
     (let ((show-pattern (λ (x) (show-pattern x abbreviated))))
       (match x
+        [(tag t _)           (format "#~a" (show-pattern t))]
         [(pvar v)            (symbol->string v)]
         [(literal x)         (format ":~a" (symbol->string x))]
         [(constant x)        (if abbreviated
@@ -118,8 +127,8 @@
   ; Compile a racket-like macro pattern into a Pattern.
   ; Guarantees that no ellipses pattern is variableless.
   ; TODO: Verify that variables are unique
-  (define (sexpr->pattern p lits macs vars origins)
-    (let ((sexpr->pattern (λ (p) (sexpr->pattern p lits macs vars origins))))
+  (define (sexpr->pattern p lits macs vars)
+    (let ((sexpr->pattern (λ (p) (sexpr->pattern p lits macs vars))))
       (cond [(symbol? p)
              (cond
                [(member p lits)                 (literal p)]
@@ -138,19 +147,19 @@
                 (plist (t-syntax) (map sexpr->pattern ps))]
                [(list ps ... q '... rs ...) ; (P1 ... Pn Q* R1 ... Rm)
                 (if (and (cons? ps) (member (car ps) macs))
-                    (make-ellipsis (t-macro (car ps) origins)
+                    (make-ellipsis (t-macro (car ps))
                                    (map sexpr->pattern (cdr ps))
                                    (sexpr->pattern q)
                                    (map sexpr->pattern rs))
-                    (make-ellipsis (t-apply origins)
+                    (make-ellipsis (t-apply)
                                    (map sexpr->pattern ps)
                                    (sexpr->pattern q)
                                    (map sexpr->pattern rs)))]
                [(list ps ...) ; (P1 ... Pn)
                 (if (and (cons? ps) (member (car ps) macs))
-                    (plist (t-macro (car ps) origins)
+                    (plist (t-macro (car ps))
                            (map sexpr->pattern (cdr ps)))
-                    (plist (t-apply origins)
+                    (plist (t-apply)
                            (map sexpr->pattern ps)))])])))
   
   
@@ -180,6 +189,8 @@
   (define (unify x y)
     (let ((fail (λ () (raise (CantUnify x y)))))
       (match* (x y)
+        [((tag x _) y)                (unify x y)]
+        [(x (tag y _))                (unify x y)]
         [((literal x) (literal x))    (literal x)]
         [((literal x) y)              (fail)]
         [(x (literal y))              (fail)]
@@ -188,15 +199,15 @@
         [((constant x) (constant x))  (constant x)]
         [((constant x) y)             (fail)]
         [(x (constant y))             (fail)]
-        [((plist xt xs) (plist yt ys))
+        [((plist t xs) (plist t ys))
          (if (eq? (length xs) (length ys))
-             (plist (unify-types xt yt) (unifies xs ys))
+             (plist t (unifies xs ys))
              (fail))]
-        [((plist xt xs) (ellipsis t l m r))
+        [((plist t xs) (ellipsis t l m r))
          (let ((m-len (- (length xs) (length l) (length r))))
            (if (< m-len 0)
                (fail)
-               (plist (unify-types xt t) (unifies xs (append l (repeat m-len m) r)))))]
+               (plist t (unifies xs (append l (repeat m-len m) r)))))]
         [((ellipsis t l m r) (plist xt xs)) ; symmetric to case below
          (unify (plist xt xs) (ellipsis t l m r))]
         [((ellipsis t1 l1 m1 r1) (ellipsis t2 l2 m2 r2))
@@ -212,29 +223,22 @@
   ; A helper: unify ellipses whose common heads and tails have been stripped.
   (define (unify-ellipses left right x y)
     (match* (x y)
-      [((ellipsis t l m r) (ellipsis t2 '() m2 '()))
+      [((ellipsis t l m r) (ellipsis t '() m2 '()))
        (match (attempt-unification (unify m m2))
          [(CantUnify _ _) ; m disjoint from m2, so |m| = 0
           (let* ((x-lst (append l r))
                  (y-lst (repeat (length x-lst) m2))
                  (center (unifies x-lst y-lst)))
-            (plist (unify-types t t2) (append left center right)))]
+            (plist t (append left center right)))]
          [m3 ; 
           (let* ((l-lst (unifies (repeat (length l) m2) l))
                  (r-lst (unifies (repeat (length r) m2) r)))
-            (ellipsis (unify-types t t2) (append left l-lst) m3 (append r-lst right)))])]
-      [((ellipsis t2 '() m2 '()) (ellipsis t1 l1 m1 r1))
+            (ellipsis t (append left l-lst) m3 (append r-lst right)))])]
+      [((ellipsis t '() m2 '()) (ellipsis t l1 m1 r1))
        (unify-ellipses left right y x)] ; symmetric to case above
       ; TODO: For the case below, find the *set* of all unifications,
       ;       and only fail when the set has more than one element.
       [(_ _) (no-unique-unification x y)])) ; Have (a x*) \/ (y* b)
-  
-  (define (unify-types t1 t2)
-    (match* [t1 t2]
-      [[(t-syntax)     (t-syntax)]     (t-syntax)]
-      [[(t-apply o1)   (t-apply o2)]   (t-apply o1)] ; !!! Need o1=o2?
-      [[(t-macro m o1) (t-macro m o2)] (t-macro m o1)]
-      [[_ _]                           (raise (CantUnify t1 t2))]))
   
   (define (no-unique-unification x y)
     (error "unify-ellipses: There may not be a unique unification."))
@@ -247,27 +251,9 @@
   
   (define (minus x y [origin #f]) ; o: expected origin, or #f if any
     (let ((minus (λ (x y) (minus x y origin))))
-    (define (fail) (raise (CantMatch x y)))
+    (define (fail) (raise (CantMatch (show-pattern x) (show-pattern y))))
     (define (succeed) empty-env)
     #|(display (format "\t~a - ~a\n" (show-pattern x) (show-pattern y)))|#
-      
-    (define (check-origin os)
-      (if (and origin (or (empty? os) (not (equal? (car os) origin))))
-          (fail)
-          (void)))
-    
-    (define (type-minus t1 t2)
-      (match* [t1 t2]
-        [[(t-syntax) (t-syntax)]
-         (t-syntax)]
-        [[(t-apply os) (t-apply _)]
-         (check-origin os)
-         (t-apply os)]
-        [[(t-macro m os) (t-macro m _)]
-         (check-origin os)
-         (t-macro m os)]
-        [[_ _]
-         (raise (CantMatch t1 t2))]))
     
     (define (minuses xs ys)
       (apply hash-union (map minus xs ys)))
@@ -282,9 +268,23 @@
                            (minus m y)
                            (map minus r (repeat (length r) y))))
 
+    (define (has-origin? t o)
+      (and (tag? t) (equal? (tag-origin t) o)))
+    
+    (define (strip-origin x)
+      (define (strip x)
+        (if (tag? x) (strip (tag-term x)) x))
+      (cond [(not origin)
+             (strip x)]
+            [(nominal? x)
+             (strip x)]
+            [(has-origin? x origin)
+             (strip x)]
+            [else (fail)]))
+      
       
       ;(display (format "\t\tMatch ~a - ~a\n" (show-pattern x) (show-pattern y)))
-      (match* (x y)
+      (match* ((strip-origin x) y)
         [((literal x) (literal x))     (succeed)]
         [((literal _) _)               (fail)]
         [(_ (literal _))               (fail)]
@@ -293,12 +293,11 @@
         [((constant x) (constant x))   (succeed)]
         [((constant _) _)              (fail)]
         [(_ (constant _))              (fail)]
-        [((plist xt xs) (plist yt ys)) (if (eq? (length xs) (length ys))
-                                           (begin (type-minus xt yt)
-                                                  (minuses xs ys))
+        [((plist t xs) (plist t ys))   (if (eq? (length xs) (length ys))
+                                           (minuses xs ys)
                                            (fail))]
         [((ellipsis _ _ _ _) (plist _ _))  (fail)]
-        [((plist xt xs) (ellipsis t l m r))
+        [((plist t xs) (ellipsis t l m r))
          (let ((m-len (- (length xs) (length l) (length r))))
            (if (< m-len 0)
                (fail)
@@ -307,9 +306,9 @@
                      (xs:m (take (drop xs (length l)) m-len)))
                  (hash-union
                   (minuses xs:l l)
-                  (list-minuses (type-minus xt t) xs:m m)
+                  (list-minuses t xs:m m)
                   (minuses xs:r r)))))]
-        [((ellipsis t1 l1 m1 r1) (ellipsis t2 l2 m2 r2))
+        [((ellipsis t l1 m1 r1) (ellipsis t l2 m2 r2))
          (let* ((l2-len (length l2))
                 (l1-len (- (length l1) l2-len))
                 (r2-len (length r2))
@@ -319,8 +318,7 @@
                (let [[l1:l (take l1 l2-len)]
                      [l1:r (drop l1 l2-len)]
                      [r1:l (take r1 r1-len)]
-                     [r1:r (drop r1 r1-len)]
-                     [t    (type-minus t1 t2)]]
+                     [r1:r (drop r1 r1-len)]]
                  (hash-union
                   (minuses l1:l l2)
                   (ellipsis-minuses t l1:r m1 r1:l m2)
@@ -337,23 +335,24 @@
   
   ; assume that all vars are bound in env
   ; assume that vars are at least as deep as their bindings in env
-  (define (substitute e x [wrap id])
-    (let [[subs (λ (x) (substitute e x wrap))]]
+  (define (substitute e x)
+    (let [[subs (λ (x) (substitute e x))]]
       (match x
-        [(pvar v)         (wrap (hash-ref e v))]
-        [(constant x)     (constant x)] ; !!! Should leaves be wrapped?
+        [(tag t os)       (tag (subs t) os)]
+        [(pvar v)         (hash-ref e v)]
+        [(constant x)     (constant x)]
         [(literal x)      (literal x)]
-        [(plist t xs)     (wrap (plist t (map subs xs)))]
+        [(plist t xs)     (plist t (map subs xs))]
         [(ellipsis t l m r) (let [[head (map subs l)]
-                                  [middle (substitute-rep t e m wrap)]
+                                  [middle (substitute-rep t e m)]
                                   [tail (map subs r)]]
                             (match middle
                               [(ellipsis t l m r)
-                               (wrap (ellipsis t (append head l) m (append r tail)))]
+                               (ellipsis t (append head l) m (append r tail))]
                               [(plist t xs)
-                               (wrap (plist t (append head xs tail)))]))])))
+                               (plist t (append head xs tail))]))])))
   
-  (define (substitute-rep t e x wrap)
+  (define (substitute-rep t e x)
     
     ; slice : Extract a slice from the bindings using 'f',
     ;         add them to the environment 'e',
@@ -361,7 +360,7 @@
     (define (slice bindings f)
       (define (slice-binding b)
         (cons (car b) (f (cdr b))))
-      (substitute (hash-add-bindings e (map slice-binding bindings)) x wrap))
+      (substitute (hash-add-bindings e (map slice-binding bindings)) x))
     
     (define (slices bindings f len)
       (map (λ (n) (slice bindings (λ (x) (list-ref (f x) n)))) (range len)))
@@ -435,6 +434,7 @@
   ; free-vars : Pattern -> Set<Symbol>
   (define (free-vars x)
     (match x
+      [(tag t _) (free-vars t)]
       [(pvar v) (set v)]
       [(literal _) (set)]
       [(constant _) (set)]
@@ -451,6 +451,7 @@
   (define (replace s x)
     (define (replaces s lst) (map (λ (x) (replace s x)) lst))
     (match x
+      [(tag t os) (tag (replace s t) os)]
       [(pvar v) (if (hash-has-key? s v) (hash-ref s v) x)]
       [(literal _) x]
       [(constant _) x]
