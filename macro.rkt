@@ -25,43 +25,50 @@
          #'(let [[pc (sexpr->pattern '(name p ...)
                                      '(lit ...)
                                      '(name mac ...)
-                                     #f
-                                     'Pandora)] ...]
+                                     #f)] ...]
            (let [[qc (sexpr->pattern 'q
                                      '(lit ...)
                                      '(name mac ...)
-                                     (set->list (free-vars pc))
-                                     'Pandora)] ...]
+                                     (set->list (free-vars pc)))] ...]
              (add-global-literals! '(name lit ...))
              (Macro 'name (list (MacroCase pc qc) ...)))))]))
   
+  
   (define (instantiate-macro m id)
-    (define (instantiate-type t i n)
-      (let [[o (o-macro (Macro-name m) i n)]]
-        (match t
-          [(t-syntax)       (t-syntax)]
-          [(t-apply _)      (t-apply o)]
-          [(t-macro m _)    (t-macro m o)])))
-    (define (instantiate-pattern p i n)
-      (let [[rec (λ (p) (instantiate-pattern p i n))]]
-        (match p
-          [(pvar _)            p]
-          [(literal _)         p]
-          [(constant _)        p]
-          [(plist t ps)        (plist (instantiate-type t i n) (map rec ps))]
-          [(ellipsis t l m r)  (ellipsis (instantiate-type t i n)
-                                         (map rec l)
-                                         (rec m)
-                                         (map rec r))])))
+    
+    (define (add-origin o p)
+      (if (nominal? p) p (tag p o)))
+    
+    (define (wrap-branches p o)
+      (let [[rec (λ (p) (wrap-branches p o))]]
+        (add-origin o
+                    (match p
+                      [(pvar _)            p]
+                      [(literal _)         p]
+                      [(constant _)        p]
+                      [(plist t ps)        (plist t (map rec ps))]
+                      [(ellipsis t l m r)  (ellipsis t
+                                                     (map rec l)
+                                                     (rec m)
+                                                     (map rec r))]))))
+    (define (wrap-root p o)
+      (add-origin o p))
+    
+    (define (wrap-macro p i n)
+      (wrap-root (wrap-branches p (o-branch (Macro-name m) i n))
+                 (o-macro (Macro-name m) i n)))
+    
     (define (instantiate-pair i n c)
       (match c
         [(MacroCase left right)
-         (MacroCase (instantiate-pattern left i n)
-                    (instantiate-pattern right i n))]))
+         (MacroCase left
+                    (wrap-macro right i n))]))
+    
     (match m
       [(Macro name cases)
        (Macro name (map (λ (n) (instantiate-pair id n (list-ref cases n)))
                         (range (length cases))))]))
+  
   
   (define-syntax-rule (define-macro name lits macs case ...)
     (hash-set! global-macro-dictionary 'name
@@ -101,32 +108,33 @@
        (let* [[c (list-ref (Macro-cases (lookup-macro m)) n)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-         (substitute (minus x rhs origin) lhs))]))
+         (display (format "Unexpand ~a (~a => ~a)\n"
+                          (show-pattern x)
+                          (show-pattern lhs)
+                          (show-pattern rhs)))
+         (substitute (minus x rhs (o-branch m i n)) lhs))]))
   
   (define (expand e)
     (match e
       [(constant c)       (constant c)]
       [(literal l)        (literal l)]
+      [(tag p o)          (tag (expand p) o)]
       [(plist t ps)
        (if (t-macro? t)
            (expand (expand-macro (lookup-macro (t-macro-name t)) e))
            (plist t (map expand ps)))]))
   
+  ; TODO: Reject headless macro fragments!
   (define (unexpand p)
-    (define (get-origin t)
-      (match t
-        [(t-syntax)      #f] ; impossible?
-        [(t-apply o)     o]
-        [(t-macro m o)   o])) ; impossible?
     (define (rec p)
       (match p
         [(constant c)   (constant c)]
         [(literal l)    (literal l)]  ; impossible?
-        [(plist t ps)   (match (get-origin t)
-                          [(o-macro m i n)
-                           (unexpand (unexpand-macro p (o-macro m i n)))]
-                          [_ (plist t (map rec ps))])]))
-    (with-handlers [[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
-                     (λ (x) #f)]]
+        [(plist t ps)   (plist t (map rec ps))]
+        [(tag t o)      (match o
+                          [(o-macro m i n) (unexpand-macro (rec t) o)]
+                          [(o-branch _ _ _) (tag (rec t) o)])]))
+    (with-handlers [];[[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
+                     ;(λ (x) #f)]]
       (rec p)))
 )

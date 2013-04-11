@@ -32,10 +32,10 @@
              (constant p)]
             [else (error (format "bad pattern: ~a" p))])))
 
-(define test-origin 'Pandora)
+(define test-origin (list))
 
 (define-syntax-rule (test-pattern p)
-  (sexpr->pattern 'p test-lits test-macs test-vars test-origin))
+  (sexpr->pattern 'p test-lits test-macs test-vars))
 
 ;(define-syntax-rule (test-template p)
 ;  (sexpr->template 'p test-vars))
@@ -43,12 +43,12 @@
 (define-syntax test-subs-rhs
   (syntax-rules (@ @...)
     [(_ (@... (x ...) y (z ...)))
-     (inter-ellipsis (t-apply test-origin)
+     (inter-ellipsis (t-apply)
                      (list (test-subs-rhs x) ...)
                      (test-subs-rhs y)
                      (list (test-subs-rhs z) ...))]
     [(_ (@ x ...))
-     (inter-list (t-apply test-origin) (list (test-subs-rhs x) ...))]
+     (inter-list (t-apply) (list (test-subs-rhs x) ...))]
     [(_ x) (test-pattern x)]))
 
 (define-syntax-rule (mk-hash (v x) ...)
@@ -60,15 +60,14 @@
 (check-equal? (sexpr->pattern '(cond (^ (^ x y) (^ xs ys) ... (if (^ else x))))
                               '(else)
                               '(cond)
-                              #f
-                              test-origin)
-  (plist (t-macro 'cond test-origin)
+                              #f)
+  (plist (t-macro 'cond)
    (list (ellipsis (t-syntax)
                    (list (plist (t-syntax)
                                 (list (pvar 'x) (pvar 'y))))
                    (plist (t-syntax)
                           (list (pvar 'xs) (pvar 'ys)))
-                   (list (plist (t-apply test-origin)
+                   (list (plist (t-apply)
                                 (list (pvar 'if)
                                       (plist (t-syntax)
                                              (list (literal 'else) (pvar 'x))))))))))
@@ -156,6 +155,7 @@
 (define-syntax-rule (check-minus-fail x y)
   (check-exn CantMatch? (thunk (minus (test-pattern x) (test-pattern y)))))
 
+
 (check-minus x x (mk-hash (x x)))
 (check-minus x y (mk-hash (y x)))
 (check-minus-fail x A)
@@ -180,7 +180,7 @@
 (check-minus-fail A (x ...))
 (check-minus-fail () A)
 (check-minus-fail (x ...) A)
-(check-minus () () (mk-hash))
+(check-minus () () (mk-hash)) ; !!!
 (check-minus-fail (x ...) ())
 (check-minus ()              (x ...) (mk-hash (x (@))))
 (check-minus (x ...)         (y ...) (mk-hash (y (@... () x ()))))
@@ -305,7 +305,7 @@
   [(_ (^ x y))       (if x y (void))]
   [(_ (^ x y) z ...) (if x y (cond z ...))])
 
-(define cond-origin* (t-macro 'cond 'Pandora))
+(define cond-origin* (t-macro 'cond))
 (define (plist* o . xs) (plist o (apply list xs)))
 
 (check-equal? (lookup-macro 'bob) #f)
@@ -315,16 +315,17 @@
      (MacroCase (plist* cond-origin*
                         (plist* (t-syntax) (literal 'else) (pvar 'x)))
                 (pvar 'x))
+                ;(plist* (t-apply) (constant '+) (pvar 'x) (constant 0)))
      (MacroCase (plist* cond-origin*
                         (plist* (t-syntax) (pvar 'x) (pvar 'y)))
-                (plist* (t-apply 'Pandora)
+                (plist* (t-apply)
                         (constant 'if) (pvar 'x) (pvar 'y)
-                        (plist* (t-apply 'Pandora) (constant 'void))))
+                        (plist* (t-apply) (constant 'void))))
      (MacroCase (ellipsis cond-origin*
                           (list (plist* (t-syntax) (pvar 'x) (pvar 'y)))
                           (pvar 'z)
                           (list))
-                (plist* (t-apply 'Pandora) (constant 'if) (pvar 'x) (pvar 'y)
+                (plist* (t-apply) (constant 'if) (pvar 'x) (pvar 'y)
                         (ellipsis cond-origin*
                                   (list)
                                   (pvar 'z)
@@ -339,8 +340,11 @@
 (check-equal? (unexpand (expand (test-pattern (cond (^ 1 2)))))
               (test-pattern (cond (^ 1 2))))
 
-(check-equal? (unexpand (expand (test-pattern (cond (^ (+ a 2) 1) (^ else 2)))))
-              (test-pattern (cond (^ (+ a 2) 1) (^ else 2))))
+(check-equal? (unexpand (expand (test-pattern (cond (^ else 2)))))
+              (test-pattern (cond (^ else 2))))
+
+(check-equal? (unexpand (expand (test-pattern (cond (^ (+ a 2) 1) (^ else (+ 1 2))))))
+              (test-pattern (cond (^ (+ a 2) 1) (^ else (+ 1 2)))))
 
 (expand (test-pattern (cond (^ else 2))))
 
