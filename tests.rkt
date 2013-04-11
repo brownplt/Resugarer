@@ -348,8 +348,8 @@
 
 (expand (test-pattern (cond (^ else 2))))
 
-;(check-equal? (unexpand (expand (test-pattern (cond (^ else (+ 1 1))))))
-;              (test-pattern (cond (^ else (+ 1 1)))))
+(check-equal? (unexpand (expand (test-pattern (cond (^ else (+ 1 1))))))
+              (test-pattern (cond (^ else (+ 1 1)))))
 
 ;(check-equal? (unchecked-unexpand (expand (test-pattern (cond ((+ a 2) 1) (else 2)))))
 ;              (test-pattern (cond ((+ a 2) 1) (else 2))))

@@ -20,39 +20,49 @@
                    (in-hole E v)
                    "macro-aware/tag-elimination")))
 |#
-  (define-syntax-rule (user-term t)
+  (define-syntax-rule (test-term t)
     (sexpr->pattern 't (all-macro-literals) (all-macro-names) '() (o-user)))
   
   (define (atomic? t) (or (symbol? t)
                           (number? t)
                           (boolean? t)))
-  #|
-  (define (make-user-term t)
-    (match t
-      [(? atomic? t) t]
-      [(? list? t)   (cons (list 'origin (o-user))
-                           (map make-user-term t))]))
 
-  (define-syntax-rule (user-term t)
-    (make-user-term 't))
-|#
-
+  ; Assume that Redex terms all have the form
+  ;   (label origins x ...)
+  ; where 'label' identifies the term type, e.g. λ, if, apply,
+  ; 'origins' is a list of pattern origins,
+  ; and 'x ...' are either subterms, having the same form, or atoms.
+  
   (define (term->pattern t)
+    (define (add-tags os p)
+      (match os 
+        [(list) p]
+        [(cons o os) (tag (add-tags os p) o)]))
     (match t
-      [(? atomic? t)              (constant t)]
-      [(cons (list 'origin o) ts) (plist (t-apply o)
-                                         (map term->pattern ts))]))
+      [(? atomic? t)
+       (constant t)]
+      [(cons l (cons os ts))
+       (add-tags os (plist (t-apply)
+                           (cons (add-tags (constant l)) ; hack
+                                 (map term->pattern ts))))]))
 
   (define (pattern->term p)
+    (define (add-tag o t)
+      (match t
+        [(cons l (cons os ts))
+         (cons l (cons (cons o os) ts))]))
     (match p
-      [(constant c)                c]
-      [(plist (t-apply o) ps)      (cons (list 'origin o)
+      [(constant c)
+       c]
+      [(plist (t-apply) (cons )
+       (
+      [(plist (t-apply o) ps)      (cons (list 'origins o)
                                          (map pattern->term ps))]))
   
   (define (show-term t)
     (match t
       [(? atomic? t)               (show t)]
-      [(cons (list 'origin o) ts)  (format "(~a)"
+      [(cons (list 'origins o) ts)  (format "(~a)"
                                            (string-join (map show-term ts) " "))]))
   
   (define (expand-term p) ; pattern -> term
@@ -97,7 +107,7 @@
        (t + v ... E e ...)
        hole]
     [x variable-not-otherwise-mentioned]
-    [t (origin any)])
+    [t (origins any)])
   
   (define-metafunction Mirror
     swap : x x any -> any
@@ -157,7 +167,7 @@
   
   (define-syntax-rule (test-eval t)
     (begin
-      (macro-aware-eval Mirror red (user-term t))
+      (macro-aware-eval Mirror red (test-term t))
       #f))
   
   (define-macro and () ()

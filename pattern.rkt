@@ -23,6 +23,7 @@
   ;         | constant   ; symbol or number
   ;         | plist (P1 ... Pn)
   ;         | ellipsis (P1 ... Pn Q* R1 ... Rm)
+  ;         | tag P Orig
   ;
   ; invariant: every Q* has at least one variable.
 
@@ -41,7 +42,7 @@
   (struct t-macro (name) #:transparent)
   (struct t-syntax () #:transparent)
   (struct t-apply () #:transparent)
-  (struct t-value () #:transparent)
+  (struct t-value () #:transparent)  ; necessary?
   
   ; Origin : o-user
   ;        | o-eval
