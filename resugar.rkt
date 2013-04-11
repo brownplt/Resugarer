@@ -165,6 +165,18 @@
     ((and x)        x)
     ((and x xs ...) (if0 x (and xs ...) 7)))
   
+  (define-macro let () ()
+    [(_ [(var val) ...] body)
+     
+  
+  (define-macro letrec () (let)
+    [(_ ((var init) ...) body)
+      (let ((var 'undefined) ...)
+        (let ((var (let ((temp init)) (lambda () (set! var temp))))
+              ...
+              (bod (lambda () body)))
+          (var) ... (bod)))])
+  
   (define-macro oneplusone () ()
     ((oneplusone) (+ 1 1)))
   

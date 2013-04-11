@@ -101,10 +101,6 @@
        (let* [[c (list-ref (Macro-cases (lookup-macro m)) n)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-         #|(display (format "\tUnexpand ~a (~a => ~a)\n"
-                          (show-pattern x)
-                          (show-pattern lhs)
-                          (show-pattern rhs))) |#
          (substitute (minus x rhs origin) lhs))]))
   
   (define (expand e)
@@ -133,21 +129,4 @@
     (with-handlers [[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
                      (λ (x) #f)]]
       (rec p)))
-  
-  
-  ;;; Debugging ;;;
-  #|
-  (define (show-pattern x)
-    (match x
-      [(pvar v)           (symbol->string v)]
-      [(literal x)        (format ":~a" (symbol->string x))]
-      [(constant x)       (format "'~a" (show x))]
-      [(plist t elems)    (format "(~a)" (string-join (map show-pattern elems) " "))]
-      [(ellipsis t l m r) (format "(~a)" (string-join
-                                          (append (map show-pattern l)
-                                                  (list (show-pattern m))
-                                                  (list "...")
-                                                  (map show-pattern r))
-                                          " "))]))
-|#
 )
