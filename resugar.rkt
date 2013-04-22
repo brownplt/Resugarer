@@ -1,74 +1,65 @@
 (module resugar racket
+  (require rackunit)
   (require redex)
   (require "utility.rkt")
   (require "pattern.rkt")
   (require "macro.rkt")
   
-  #|
-  (define-syntax-rule
-    (define-macro-aware-language new-lang old-lang e E)
-    (define-extended-language new-lang old-lang
-      (e ....
-         (tag e any any))
-      (E ....
-         (tag E any any))))
-  
-  (define-syntax-rule
-    (macro-aware-reduction-relation red lang v E)
-    (extend-reduction-relation
-     red lang (--> (in-hole E (tag v any_1 any_2))
-                   (in-hole E v)
-                   "macro-aware/tag-elimination")))
-|#
-  (define-syntax-rule (test-term t)
-    (sexpr->pattern 't (all-macro-literals) (all-macro-names) '() (o-user)))
+  (define-syntax-rule (test-patt t)
+    (sexpr->pattern 't (all-macro-literals) (all-macro-names) (list)))
   
   (define (atomic? t) (or (symbol? t)
                           (number? t)
                           (boolean? t)))
 
   ; Assume that Redex terms all have the form
-  ;   (label origins x ...)
+  ; | (label origins x ...)
+  ; | atom 
   ; where 'label' identifies the term type, e.g. λ, if, apply,
   ; 'origins' is a list of pattern origins,
-  ; and 'x ...' are either subterms, having the same form, or atoms.
+  ; and 'x ...' are either subterms, having the same form.
   
   (define (term->pattern t)
-    (define (add-tags os p)
+    (define (origs->tags os p)
       (match os 
         [(list) p]
-        [(cons o os) (tag (add-tags os p) o)]))
+        [(cons o os) (tag (origs->tags os p) o)]))
     (match t
       [(? atomic? t)
        (constant t)]
-      [(cons l (cons os ts))
-       (add-tags os (plist (t-apply)
-                           (cons (add-tags (constant l)) ; hack
-                                 (map term->pattern ts))))]))
+      [(cons l (cons (list 'origins os) ts))
+       (origs->tags os
+         (plist (t-apply) (cons (constant l) (map term->pattern ts))))]))
 
   (define (pattern->term p)
-    (define (add-tag o t)
-      (match t
-        [(cons l (cons os ts))
-         (cons l (cons (cons o os) ts))]))
+    (define (strip-tags p)
+      (match p
+        [(constant l) l]
+        [(tag p _) (strip-tags p)]))
     (match p
-      [(constant c)
-       c]
-      [(plist (t-apply) (cons )
-       (
-      [(plist (t-apply o) ps)      (cons (list 'origins o)
-                                         (map pattern->term ps))]))
+      [(constant c) c]
+      [(plist (t-apply) (cons l ps))
+       (cons (strip-tags l)
+             (cons (list 'origins (list))
+                   (map pattern->term ps)))]
+      [(tag p o)
+       (match (pattern->term p)
+         [(cons l (cons (list 'origins os) ts))
+          (cons l (cons (list 'origins (cons o os)) ts))]
+         [(? atomic? t) t])]))
   
   (define (show-term t)
     (match t
-      [(? atomic? t)               (show t)]
-      [(cons (list 'origins o) ts)  (format "(~a)"
-                                           (string-join (map show-term ts) " "))]))
+      [(? atomic? t)
+       (show t)]
+      [(cons l (cons (list 'origins o) ts))
+       (format "(~a)" (string-join (cons (symbol->string l)
+                                         (map show-term ts)) " "))]))
   
-  (define (expand-term p) ; pattern -> term
+  (define (expand-patt p) ; pattern -> term
     (pattern->term (expand p)))
   
-  (define (unexpand-term t) ; term -> pattern
+  (define (unexpand-patt t) ; term -> pattern
     (unexpand (term->pattern t)))
   
   (define (macro-aware-step lang red p)
@@ -77,37 +68,37 @@
     (define (step t) (apply-reduction-relation red t))
     (define (new-step t) (catmap resugar (step t)))
     (define (resugar t)
-      (let ((p (unexpand-term t)))
+      (let ((p (unexpand-patt t)))
         (if p (list p) (begin (display (format "SKIP ~a\n" (show-term t)))
                               (new-step t)))))
-    (new-step (expand-term p)))
+    (new-step (expand-patt p)))
   
-  (define (macro-aware-eval lang red term)
-    ;(display (format "\t~a\n" (show-pattern term)))
-    (let ((next-terms (macro-aware-step lang red term)))
-      (cons (show-pattern term #t)
-            (if (empty? next-terms)
+  (define (macro-aware-eval lang red p)
+    ;(display (format "\t~a\n" (show-pattern p)))
+    (let ((next-patts (macro-aware-step lang red p)))
+      (cons (show-pattern p #t)
+            (if (empty? next-patts)
                 (list)
-                (macro-aware-eval lang red (car next-terms))))))
+                (macro-aware-eval lang red (car next-patts))))))
   
   
   ;;; Testing ;;;
   
   (define-language Mirror
-    [e (t e ...)
-       (t + e ...)
-       (t if0 e e e)
-       (t rec x e)
+    [e (apply o e ...)
+       (+ o e ...)
+       (if0 o e e e)
+       (rec o x e)
        x
        v]
-    [v (t λ x e)
+    [v (λ o x e)
        number]
-    [E (t v ... E e ...)
-       (t if0 E e e)
-       (t + v ... E e ...)
+    [E (apply o v ... E e ...)
+       (if0 o E e e)
+       (+ o v ... E e ...)
        hole]
     [x variable-not-otherwise-mentioned]
-    [t (origins any)])
+    [o (origins any)])
   
   (define-metafunction Mirror
     swap : x x any -> any
@@ -138,46 +129,39 @@
   (define red
     (reduction-relation
      Mirror
-     (--> (in-hole E (t if0 0 e_1 e_2))
+     (--> (in-hole E (if0 o 0 e_1 e_2))
           (in-hole E e_1)
           "if0_true")
-     (--> (in-hole E (t if0 number_1 e_1 e_2))
+     (--> (in-hole E (if0 o number_1 e_1 e_2))
           (in-hole E e_2)
           "if0_false"
           (side-condition (not (equal? 0 (term number_1)))))
-     (--> (in-hole E (t + number ...))
+     (--> (in-hole E (+ o number ...))
           (in-hole E (sum number ...))
           "addition")
-     (--> (in-hole E (t_1 (t_2 λ x e) v))
+     (--> (in-hole E (apply o_1 (λ o_2 x e) v))
           (in-hole E (subs x v e))
           "beta")
-     (--> (in-hole E (t_1 (t_2 λ x e) v_1 v_2 v_s ...))
-          (in-hole E (t_1 (subs x v_1 e) v_2 v_s ...))
+     (--> (in-hole E (apply o_1 (λ o_2 x e) v_1 v_2 v_s ...))
+          (in-hole E (apply o_1 (subs x v_1 e) v_2 v_s ...))
           "beta2")
-     (--> (in-hole E (t rec x e))
-          (in-hole E (subs x (t rec x e) e))
+     (--> (in-hole E (rec o x e))
+          (in-hole E (subs x (rec o x e) e))
           "rec")))
   
   (define-metafunction Mirror
     sum : number ... -> number
     [(sum number ...) ,(apply + (term (number ...)))])
   
-;  (define-macro-aware-language Mirror* Mirror e E)
-;  (define green (macro-aware-reduction-relation red Mirror* v E))
-  
   (define-syntax-rule (test-eval t)
     (begin
-      (macro-aware-eval Mirror red (test-term t))
+      (macro-aware-eval Mirror red (test-patt t))
       #f))
   
   (define-macro and () ()
     ((and)          0)
     ((and x)        x)
     ((and x xs ...) (if0 x (and xs ...) 7)))
-  
-  (define-macro let () ()
-    [(_ [(var val) ...] body)
-     
   
   (define-macro letrec () (let)
     [(_ ((var init) ...) body)
@@ -207,16 +191,30 @@
     [(_ (^ x y))       (if0 x y (+ 0 0))]
     [(_ (^ x y) z ...) (if0 x y (cond0 z ...))])
   
+  
+  
+  (define-syntax-rule (test-conversion t)
+    (check-equal? (pattern->term (term->pattern (term t)))
+                  (term t)))
+  
+  (test-conversion (+ (origins ()) 1 2))
+  (test-conversion (if0 (origins (a b)) (+ (origins (b a)) x 3) 5 6))
+  
+  ;(expand-patt (term->pattern (term (+ (origins ()) 1 2))))
+  
+  (define t (term (+ (origins ()) 1 2)))
   (test-eval (+ 1 2))
+  (test-eval (inc 1))
+  (test-eval (inc (inc 3)))
   (test-eval (two))
+  (test-eval (three))
   (test-eval (+ 1 (inc (+ 1 1))))
   (test-eval (inc (inc (inc 1))))
   (test-eval (two))
-  (test-eval (three))
   (test-eval (six))
+  #|
   (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)) (^ (+ 1 -1) (+ 3 4)))))
   (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)))))
-  #|
   t
   (apply-reduction-relation green (list 'tag 3 777 777))
   (apply-reduction-relation green (list 'tag '(+ 1 2) 77 77))
@@ -224,10 +222,10 @@
   (apply-reduction-relation green (list (list 'tag '+ 7 7) 1 2))
   (apply-reduction-relation green (term (+ 1 2)))
   t
-  (show-term (expand-term t))
-  (unexpand-term (expand-term t))
+  (show-term (expand-patt t))
+  (unexpand-patt (expand-patt t))
   (macro-aware-step Mirror* green t)
-  ;(apply-reduction-relation green (expand-term t))
+  ;(apply-reduction-relation green (expand-patt t))
   ;(macro-aware-step Mirror* green t)
   ;(apply-reduction-relation green t)
   ;(macro-aware-step Mirror* green t)

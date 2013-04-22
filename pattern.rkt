@@ -128,6 +128,7 @@
   ; Compile a racket-like macro pattern into a Pattern.
   ; Guarantees that no ellipses pattern is variableless.
   ; TODO: Verify that variables are unique
+  ; If vars is #f, treat all symbols as variables.
   (define (sexpr->pattern p lits macs vars)
     (let ((sexpr->pattern (λ (p) (sexpr->pattern p lits macs vars))))
       (cond [(symbol? p)
