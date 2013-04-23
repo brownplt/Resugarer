@@ -212,9 +212,9 @@
   (test-eval (inc (inc (inc 1))))
   (test-eval (two))
   (test-eval (six))
-  #|
   (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)) (^ (+ 1 -1) (+ 3 4)))))
   (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)))))
+  #|
   t
   (apply-reduction-relation green (list 'tag 3 777 777))
   (apply-reduction-relation green (list 'tag '(+ 1 2) 77 77))
@@ -230,7 +230,7 @@
   ;(apply-reduction-relation green t)
   ;(macro-aware-step Mirror* green t)
   ;(macro-aware-eval Mirror* green t)
-  |#
+|#
 
   (display "ok")
 )

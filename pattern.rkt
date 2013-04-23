@@ -72,6 +72,7 @@
     (match p
       [(plist (t-syntax) _)         #t]
       [(ellipsis (t-syntax) _ _ _)  #t]
+      [(constant _)                 #t] ; TODO: tag constants!
       [_                            #f]))
   
   
@@ -253,7 +254,7 @@
   
   (define (minus x y [origin #f]) ; o: expected origin, or #f if any
     (let ((minus (λ (x y) (minus x y origin))))
-    (define (fail) (raise (CantMatch (show-pattern x) (show-pattern y))))
+    (define (fail) (raise (CantMatch x y)))
     (define (succeed) empty-env)
     #|(display (format "\t~a - ~a\n" (show-pattern x) (show-pattern y)))|#
     

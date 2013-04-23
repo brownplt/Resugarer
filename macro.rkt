@@ -108,10 +108,10 @@
        (let* [[c (list-ref (Macro-cases (lookup-macro m)) n)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-         (display (format "Unexpand ~a (~a => ~a)\n"
-                          (show-pattern x)
-                          (show-pattern lhs)
-                          (show-pattern rhs)))
+;         (display (format "Unexpand ~a (~a => ~a)\n"
+;                          (show-pattern x)
+;                          (show-pattern lhs)
+;                          (show-pattern rhs)))
          (substitute (minus x rhs (o-branch m i n)) lhs))]))
   
   (define (expand e)
@@ -134,7 +134,7 @@
         [(tag t o)      (match o
                           [(o-macro m i n) (unexpand-macro (rec t) o)]
                           [(o-branch _ _ _) (tag (rec t) o)])]))
-    (with-handlers [];[[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
-                     ;(λ (x) #f)]]
+    (with-handlers [[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
+                     (λ (x) #f)]]
       (rec p)))
 )
