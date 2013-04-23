@@ -41,16 +41,16 @@
     
     (define (wrap-branches p o)
       (let [[rec (λ (p) (wrap-branches p o))]]
-        (add-origin o
-                    (match p
-                      [(pvar _)            p]
-                      [(literal _)         p]
-                      [(constant _)        p]
-                      [(plist t ps)        (plist t (map rec ps))]
-                      [(ellipsis t l m r)  (ellipsis t
-                                                     (map rec l)
-                                                     (rec m)
-                                                     (map rec r))]))))
+        (match p
+          [(pvar _)            p] ; Do not tag vars! e.g. (M x)=>(if #t x x)->x
+          [(literal _)         (add-origin o p)]
+          [(constant _)        (add-origin o p)]
+          [(plist t ps)        (add-origin o (plist t (map rec ps)))]
+          [(ellipsis t l m r)  (add-origin o (ellipsis t
+                                                       (map rec l)
+                                                       (rec m)
+                                                       (map rec r)))])))
+
     (define (wrap-root p o)
       (add-origin o p))
     
@@ -82,7 +82,7 @@
   
   ;;; Expanding & Unexpanding Macros ;;;
   
-  (struct NotUnexpandable ())
+  (struct NotUnexpandable (pattern) #:transparent)
     
   (define global-macro-expansion-counter 42)
   
@@ -124,17 +124,22 @@
            (expand (expand-macro (lookup-macro (t-macro-name t)) e))
            (plist t (map expand ps)))]))
   
-  ; TODO: Reject headless macro fragments!
   (define (unexpand p)
+    (define (check-unlittered p)
+      (match p
+        [(constant c)   (constant c)]
+        [(literal l)    (literal l)]
+        [(plist t ps)   (plist t (map check-unlittered ps))]
+        [(tag p o)      (raise (NotUnexpandable (tag p o)))]))
     (define (rec p)
       (match p
         [(constant c)   (constant c)]
         [(literal l)    (literal l)]  ; impossible?
         [(plist t ps)   (plist t (map rec ps))]
-        [(tag t o)      (match o
-                          [(o-macro m i n) (unexpand-macro (rec t) o)]
-                          [(o-branch _ _ _) (tag (rec t) o)])]))
+        [(tag p2 o)     (match o
+                          [(o-macro m i n) (unexpand-macro (rec p2) o)]
+                          [(o-branch _ _ _) (tag (rec p2) o)])]))
     (with-handlers [[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
                      (λ (x) #f)]]
-      (rec p)))
+      (check-unlittered (rec p))))
 )

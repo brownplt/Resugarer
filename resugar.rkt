@@ -149,14 +149,14 @@
           (in-hole E (subs x (rec o x e) e))
           "rec")))
   
+  (define (red-step t) (apply-reduction-relation red t))
+  
   (define-metafunction Mirror
     sum : number ... -> number
     [(sum number ...) ,(apply + (term (number ...)))])
   
   (define-syntax-rule (test-eval t)
-    (begin
-      (macro-aware-eval Mirror red (test-patt t))
-      #f))
+    (macro-aware-eval Mirror red (test-patt t)))
   
   (define-macro and () ()
     ((and)          0)
@@ -212,8 +212,12 @@
   (test-eval (inc (inc (inc 1))))
   (test-eval (two))
   (test-eval (six))
+  (test-eval (cond0 (^ 0 (+ 1 2))))
+  (test-eval (cond0 (^ (+ 1 2) (+ 1 2))))
+  (test-eval (cond0 (^ 1 2) (^ 3 4)))
   (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)) (^ (+ 1 -1) (+ 3 4)))))
   (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)))))
+  (test-eval (+ 1 (cond0 (^ (+ 1 2) (+ 1 2)) (^ (+ 1 1) (+ 3 4)))))
   #|
   t
   (apply-reduction-relation green (list 'tag 3 777 777))

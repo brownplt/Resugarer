@@ -71,7 +71,9 @@
   (define (nominal? p)
     (match p
       [(plist (t-syntax) _)         #t]
+      [(plist (t-macro _) _)        #t]
       [(ellipsis (t-syntax) _ _ _)  #t]
+      [(ellipsis (t-macro _) _ _ _) #t]
       [(constant _)                 #t] ; TODO: tag constants!
       [_                            #f]))
   
@@ -256,7 +258,6 @@
     (let ((minus (λ (x y) (minus x y origin))))
     (define (fail) (raise (CantMatch x y)))
     (define (succeed) empty-env)
-    #|(display (format "\t~a - ~a\n" (show-pattern x) (show-pattern y)))|#
     
     (define (minuses xs ys)
       (apply hash-union (map minus xs ys)))
@@ -274,20 +275,17 @@
     (define (has-origin? t o)
       (and (tag? t) (equal? (tag-origin t) o)))
     
-    (define (strip-origin x)
+    (define (strip-origin x y)
       (define (strip x)
         (if (tag? x) (strip (tag-term x)) x))
-      (cond [(not origin)
-             (strip x)]
-            [(nominal? x)
-             (strip x)]
-            [(has-origin? x origin)
-             (strip x)]
-            [else (fail)]))
+      (if (or (not origin)
+              (nominal? x)
+              (has-origin? x origin)
+              (pvar? y))
+          (strip x)
+          (fail)))
       
-      
-      ;(display (format "\t\tMatch ~a - ~a\n" (show-pattern x) (show-pattern y)))
-      (match* ((strip-origin x) y)
+      (match* ((strip-origin x y) y)
         [((literal x) (literal x))     (succeed)]
         [((literal _) _)               (fail)]
         [(_ (literal _))               (fail)]
