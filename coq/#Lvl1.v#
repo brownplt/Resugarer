@@ -1,0 +1,30 @@
+Require Import Util.
+Require Import Coq.Arith.EqNat.
+
+Definition vid := nat.
+Definition nid := nat.
+
+Inductive term :=
+| var : vid -> term
+| node : nid -> list term -> term.
+
+Inductive macro :=
+| transf : term -> term -> macro.
+
+Inductive env :=
+| mtEnv : env
+| bind : vid -> term -> env -> env.
+
+Fixpoint lookup (v : vid) (e : env) : option term :=
+  match e with
+    | mtEnv => None
+    | bind v' t e =>
+      if beq_nat v v'
+        then Some t
+        else lookup v e
+  end.
+
+Fixpoint subs (e : env) (t : term) : option term :=
+  match t with
+    | var v => lookup v e
+    | node l ts => 

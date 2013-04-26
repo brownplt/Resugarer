@@ -1,0 +1,255 @@
+Require Import Coq.Arith.EqNat.
+Require Import Coq.Lists.List.
+Require Import Util.
+Require Import Cases.
+
+Definition vid := nat.
+Definition nid := nat.
+Definition beq_vid := beq_nat.
+Definition beq_nid := beq_nat.
+
+Definition admit {T: Type} : T.  Admitted.
+
+Inductive patt :=
+| pVar : vid -> patt
+| pNode : nid -> list patt -> patt.
+
+Inductive term :=
+| tNode : nid -> list term -> term.
+
+
+
+(* I don't understand why this is so easy to prove,
+   even though I couldn't figure out how to
+   write it as a Definition. *)
+
+Inductive tree :=
+| branch : list tree -> tree.
+
+Lemma treeInd
+  (P : tree -> Set)
+  (base_case : P (branch nil))
+  (rec_case : forall (t : tree) (ts : list tree),
+              P (branch ts) -> P (branch (t :: ts)))
+  (t : tree) : P t.
+Proof.
+  destruct t. induction l.
+    exact base_case.
+    apply rec_case. exact IHl.
+Qed.
+
+
+Inductive macro :=
+| transf : patt -> patt -> macro.
+
+Inductive env :=
+| mtEnv : env
+| bind : vid -> term -> env -> env.
+
+
+Lemma term_ind'
+  (P : term -> Type)
+  (base_case : forall (n : nid), P (tNode n nil))
+  (rec_case : forall (n : nid) (t : term) (ts : list term),
+    P (tNode n ts) -> P (tNode n (t :: ts)))
+  (t : term) : P t.
+Proof.
+  destruct t as [n ts]. induction ts as [ | t ts].
+    Case "nil". exact (base_case n).
+    Case "t :: ts". apply rec_case. exact IHts.
+Qed.
+
+Lemma patt_ind'
+  (P : patt -> Type)
+  (var_case : forall (v : vid), P (pVar v))
+  (base_case : forall (n : nid), P (pNode n nil))
+  (rec_case : forall (n : nid) (p : patt) (ps : list patt),
+    P (pNode n ps) -> P (pNode n (p :: ps)))
+  (p : patt) : P p.
+Proof.
+  destruct p as [v | n ps].
+    Case "var v". exact (var_case v).
+    Case "node n ps". induction ps as [ | p ps].
+      SCase "nil". exact (base_case n).
+      SCase "p :: ps". exact (rec_case n p ps IHps).
+Qed.
+
+
+Fixpoint lookup (v : vid) (e : env) : option term :=
+  match e with
+    | mtEnv => None
+    | bind v' t e =>
+      if beq_vid v v'
+        then Some t
+        else lookup v e
+  end.
+
+Fixpoint compose_env (e1 : env) (e2 : env) : env :=
+  match e1 with
+    | mtEnv => e2
+    | bind v t e1 => bind v t (compose_env e1 e2)
+  end.
+
+Lemma subs (e : env) (p : patt) : option term.
+Proof.
+  apply patt_ind'.
+    intros. exact (lookup v e).
+    intros. exact (Some (tNode n nil)).
+    clear p. intros n p ps X. destruct X as [t | ].
+      exact None.
+      exact None.
+    exact p.
+Qed.
+Print subs.
+
+Fixpoint subs (e : env) (p : patt) : option term :=
+  match p with
+    | pVar v => lookup v e
+    | pNode l ps =>
+      match subss e ps with
+        | None => None
+        | Some ts => Some (tNode l ts)
+      end
+  end
+with subss (e : env) (ps : list patt) : option (list term) :=
+  match ps with
+    | nil => Some nil
+    | p :: ps =>
+      match subs e p with
+        | None => None
+        | Some t =>
+          match subss e ps with
+            | None => None
+            | Some ts => Some (t :: ts)
+          end
+      end
+  end.
+
+Notation "e * p" := (subs e p).
+
+Fixpoint minus (p : patt) (t : term) : option env :=
+  match p with
+    | pVar v => Some (bind v t mtEnv)
+    | pNode l ps =>
+      match t with
+        | tNode l' ts =>
+          if beq_nid l l'
+            then minuses ps ts
+            else None
+      end
+  end
+with minuses (ps : patts) (ts : terms) : option env :=
+  match (ts, ps) with
+    | (tNil, pNil) => Some mtEnv
+    | (tNil, _) => None
+    | (_, pNil) => None
+    | (tCons t ts, pCons p ps) =>
+      match minus p t with
+        | None => None
+        | Some e =>
+          match minuses ps ts with
+            | None => None
+            | Some e' => Some (compose_env e e')
+          end
+      end
+  end.
+
+Notation "e / p" := (minus p e).
+
+Lemma foo : forall (t : term) (v : vid),
+  minus (pVar v) t = Some (bind v t mtEnv).
+Proof.
+  intros. simpl. reflexivity.
+Qed.
+
+Check patt_ind'.
+
+Lemma match_subs : forall (p : patt) (t : term) (e : env),
+  t / p = Some e -> e * p = Some t.
+Proof.
+  intros. induction p using patt_ind'.
+  Case "pVar". simpl in *. inversion H. simpl.
+    rewrite <- beq_nat_refl. reflexivity.
+  Case "pNode". simpl in *. destruct t as [l' ts].
+    destruct (beq_nid l l').
+
+
+(*
+  let rec Ps (ts : terms) : Prop :=
+    match ts with
+      | tNil => True
+      | tCons t ts => P t /\ Ps ts
+    end in 
+  match t with
+  | tNode n ts => terms_ind2 
+  fix terms_ind2
+        (Ps : terms -> Prop)
+        (base_case_terms : Ps tNil)
+        (rec_case_terms : forall (t : term) (ts : terms),
+          P t -> Ps ts -> Ps (tCons t ts))
+        (ts : terms) : Ps ts :=
+  match ts with
+    | tNil => base_case_terms
+    | tCons t ts =>
+      rec_case_terms t ts
+        (term_ind2 P base_case_term rec_case_term t)
+        (terms_ind2 Ps base_case_terms rec_case_terms ts)
+  end.
+
+Fixpoint term_ind2
+    (P : term -> Prop)
+    (base_case_term : forall (n : nid), P (tNode n tNil))
+    (rec_case_term : forall (n : nid) (t : term) (ts : terms),
+      P (tNode n ts) -> P (tNode n (tCons t ts)))
+    (t : term) : P t :=
+  fix terms_ind2
+        (Ps : terms -> Prop)
+        (base_case_terms : Ps tNil)
+        (rec_case_terms : forall (t : term) (ts : terms),
+          P t -> Ps ts -> Ps (tCons t ts))
+        (ts : terms) : Ps ts :=
+  match ts with
+    | tNil => base_case_terms
+    | tCons t ts =>
+      rec_case_terms t ts
+        (term_ind2 P base_case_term rec_case_term t)
+        (terms_ind2 Ps base_case_terms rec_case_terms ts)
+  end.
+
+Fixpoint vv_ind''
+    (P : vv -> Prop)
+    (base_case : forall (n : nid), P (vvNode n nil))
+    (ind_case : forall (n : nid) (t : vv) (ts : list vv),
+      P (vvNode n ts) -> P (vvNode n (t :: ts)))
+    (t : vv) : P t :=
+  match t with
+    | vvNode n nil => base_case n
+    | vvNode n (t :: ts) =>
+      ind_case n t ts (vv_ind'' P base_case ind_case (vvNode n ts))
+  end.
+
+Fixpoint vv_ind'' : forall (P : vv -> Prop),
+  (forall (n : nid), P (vvNode nid nil)) ->
+  (forall (n : nid) (t : vv) (ts : list vv),
+    P (vvNode nid ts) -> P (vvNode nid (t :: ts))) ->
+  (forall (t : vv), P t) := id.
+
+Scheme term_ind' := Induction for term Sort Set
+with terms_ind' := Induction for terms Sort Set.
+
+Check term_ind'.
+
+Definition A := nat.
+Definition B := nat.
+Inductive tree : Set :=
+    node : A -> forest -> tree
+with forest : Set :=
+  | leaf : B -> forest
+  | cons : tree -> forest -> forest.
+Scheme tree_forest_rec := Induction for tree Sort Set
+  with forest_tree_rec := Induction for forest Sort Set.
+Check tree_forest_rec.
+
+Scheme patt_ind' := Induction for patt Sort Prop
+with patts_ind' := Induction for patts Sort Prop.
+*)

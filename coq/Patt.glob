@@ -1,0 +1,220 @@
+DIGEST 0bd3f50da8a4a0d7250ca34513eb2a53
+FPatt
+R15:27 Coq.Bool.Bool <> <> lib
+R45:59 Coq.Arith.EqNat <> <> lib
+R77:90 Coq.Lists.List <> <> lib
+R108:112 Cases <> <> lib
+def 127:129 <> vid
+R134:136 Coq.Init.Datatypes <> nat ind
+def 150:152 <> nid
+R157:159 Coq.Init.Datatypes <> nat ind
+def 173:179 <> beq_vid
+R184:190 Coq.Arith.EqNat <> beq_nat def
+def 204:210 <> beq_nid
+R215:221 Coq.Arith.EqNat <> beq_nat def
+ind 262:265 <> patt
+constr 272:275 <> pvar
+constr 293:297 <> pnode
+R286:289 Patt <> patt ind
+R279:281 Patt <> vid def
+R321:324 Patt <> patt ind
+R308:311 Coq.Init.Datatypes <> list ind
+R313:316 Patt <> patt ind
+R301:303 Patt <> nid def
+ind 390:393 <> term
+constr 400:404 <> tnode
+R428:431 Patt <> term ind
+R415:418 Coq.Init.Datatypes <> list ind
+R420:423 Patt <> term ind
+R408:410 Patt <> nid def
+def 469:472 <> fvar
+R479:481 Patt <> vid def
+R489:492 Patt <> patt ind
+R513:513 Patt <> p var
+R526:529 Patt <> pvar constr
+R537:543 Coq.Bool.Bool <> Is_true def
+R546:552 Patt <> beq_vid def
+R554:554 Patt <> v var
+R566:570 Patt <> pnode constr
+R603:606 Coq.Init.Datatypes <> list ind
+R608:611 Patt <> patt ind
+R638:639 Patt <> ps var
+R658:660 Coq.Init.Datatypes <> nil constr
+R665:669 Coq.Init.Logic <> False ind
+R684:687 Coq.Init.Datatypes <> :list_scope:x_'::'_x not
+R702:705 Coq.Init.Logic <> :type_scope:x_'\/'_x not
+R694:697 Patt <> fvar def
+R701:701 Patt <> p var
+R699:699 Patt <> v var
+R706:710 Patt <> fvars var
+R712:713 Patt <> ps var
+def 969:974 <> closed
+R981:984 Patt <> patt ind
+R1005:1005 Patt <> p var
+R1018:1021 Patt <> pvar constr
+R1028:1032 Coq.Init.Logic <> False ind
+R1040:1044 Patt <> pnode constr
+R1079:1082 Coq.Init.Datatypes <> list ind
+R1084:1087 Patt <> patt ind
+R1115:1116 Patt <> ps var
+R1136:1138 Coq.Init.Datatypes <> nil constr
+R1143:1146 Coq.Init.Logic <> True ind
+R1162:1165 Coq.Init.Datatypes <> :list_scope:x_'::'_x not
+R1180:1183 Coq.Init.Logic <> :type_scope:x_'/\'_x not
+R1172:1177 Patt <> closed def
+R1179:1179 Patt <> p var
+R1184:1190 Patt <> closeds var
+R1192:1193 Patt <> ps var
+def 1231:1238 <> patt_ind
+R1254:1257 Patt <> patt ind
+R1287:1289 Patt <> vid def
+R1293:1293 Patt <> P var
+R1296:1299 Patt <> pvar constr
+R1301:1301 Patt <> v var
+R1324:1326 Patt <> nid def
+R1330:1330 Patt <> P var
+R1333:1337 Patt <> pnode constr
+R1341:1343 Coq.Init.Datatypes <> nil constr
+R1339:1339 Patt <> n var
+R1366:1368 Patt <> nid def
+R1376:1379 Patt <> patt ind
+R1388:1391 Coq.Init.Datatypes <> list ind
+R1393:1396 Patt <> patt ind
+R1429:1429 Patt <> P var
+R1432:1436 Patt <> pnode constr
+R1442:1445 Coq.Init.Datatypes <> :list_scope:x_'::'_x not
+R1441:1441 Patt <> p var
+R1446:1447 Patt <> ps var
+R1438:1438 Patt <> n var
+R1411:1411 Patt <> P var
+R1414:1418 Patt <> pnode constr
+R1422:1423 Patt <> ps var
+R1420:1420 Patt <> n var
+R1404:1404 Patt <> P var
+R1406:1406 Patt <> p var
+R1477:1480 Patt <> patt ind
+R1485:1485 Patt <> P var
+R1487:1487 Patt <> p var
+R1502:1502 Patt <> p var
+R1511:1511 Patt <> P var
+R1513:1513 Patt <> p var
+R1528:1531 Patt <> pvar constr
+R1538:1538 Patt <> h var
+R1550:1554 Patt <> pnode constr
+R1594:1597 Coq.Init.Datatypes <> list ind
+R1599:1602 Patt <> patt ind
+R1607:1607 Patt <> P var
+R1610:1614 Patt <> pnode constr
+R1618:1619 Patt <> ps var
+R1641:1642 Patt <> ps var
+R1663:1665 Coq.Init.Datatypes <> nil constr
+R1670:1670 Patt <> g var
+R1689:1692 Coq.Init.Datatypes <> :list_scope:x_'::'_x not
+R1699:1699 Patt <> f var
+R1722:1730 Patt <> patts_rec var
+R1732:1733 Patt <> ps var
+R1709:1716 Patt <> patt_rec var
+R1718:1718 Patt <> p var
+R1705:1706 Patt <> ps var
+R1703:1703 Patt <> p var
+def 1776:1783 <> term_ind
+R1799:1802 Patt <> term ind
+R1832:1834 Patt <> nid def
+R1838:1838 Patt <> P var
+R1841:1845 Patt <> tnode constr
+R1849:1851 Coq.Init.Datatypes <> nil constr
+R1847:1847 Patt <> n var
+R1874:1876 Patt <> nid def
+R1884:1887 Patt <> term ind
+R1896:1899 Coq.Init.Datatypes <> list ind
+R1901:1904 Patt <> term ind
+R1937:1937 Patt <> P var
+R1940:1944 Patt <> tnode constr
+R1950:1953 Coq.Init.Datatypes <> :list_scope:x_'::'_x not
+R1949:1949 Patt <> t var
+R1954:1955 Patt <> ts var
+R1946:1946 Patt <> n var
+R1919:1919 Patt <> P var
+R1922:1926 Patt <> tnode constr
+R1930:1931 Patt <> ts var
+R1928:1928 Patt <> n var
+R1912:1912 Patt <> P var
+R1914:1914 Patt <> t var
+R1985:1988 Patt <> term ind
+R1993:1993 Patt <> P var
+R1995:1995 Patt <> t var
+R2010:2010 Patt <> t var
+R2019:2019 Patt <> P var
+R2021:2021 Patt <> t var
+R2036:2040 Patt <> tnode constr
+R2080:2083 Coq.Init.Datatypes <> list ind
+R2085:2088 Patt <> term ind
+R2093:2093 Patt <> P var
+R2096:2100 Patt <> tnode constr
+R2104:2105 Patt <> ts var
+R2127:2128 Patt <> ts var
+R2149:2151 Coq.Init.Datatypes <> nil constr
+R2156:2156 Patt <> g var
+R2175:2178 Coq.Init.Datatypes <> :list_scope:x_'::'_x not
+R2185:2185 Patt <> f var
+R2208:2216 Patt <> terms_rec var
+R2218:2219 Patt <> ts var
+R2195:2202 Patt <> term_rec var
+R2204:2204 Patt <> t var
+R2191:2192 Patt <> ts var
+R2189:2189 Patt <> t var
+def 2260:2271 <> term_to_patt
+R2278:2281 Patt <> term ind
+R2286:2289 Patt <> patt ind
+R2302:2302 Patt <> t var
+R2315:2319 Patt <> tnode constr
+R2329:2333 Patt <> pnode constr
+R2338:2340 Coq.Lists.List <> map def
+R2342:2353 Patt <> term_to_patt def
+prf 2373:2391 <> term_to_patt_closed
+R2407:2410 Patt <> term ind
+R2416:2421 Patt <> closed def
+R2424:2435 Patt <> term_to_patt def
+R2437:2437 Patt <> t var
+prf 2593:2604 <> beq_vid_refl
+R2620:2622 Patt <> vid def
+R2637:2639 Coq.Init.Logic <> :type_scope:x_'='_x not
+R2626:2632 Patt <> beq_vid def
+R2636:2636 Patt <> v var
+R2634:2634 Patt <> v var
+R2640:2643 Coq.Init.Datatypes <> true constr
+R2670:2681 Coq.Arith.EqNat <> beq_nat_refl thm
+R2670:2681 Coq.Arith.EqNat <> beq_nat_refl thm
+prf 2712:2723 <> beq_vid_true
+R2740:2742 Patt <> vid def
+R2768:2770 Coq.Init.Logic <> :type_scope:x_'='_x not
+R2767:2767 Patt <> x var
+R2771:2771 Patt <> y var
+R2756:2758 Coq.Init.Logic <> :type_scope:x_'='_x not
+R2745:2751 Patt <> beq_vid def
+R2755:2755 Patt <> y var
+R2753:2753 Patt <> x var
+R2759:2762 Coq.Init.Datatypes <> true constr
+R2795:2806 Coq.Arith.EqNat <> beq_nat_true thm
+R2795:2806 Coq.Arith.EqNat <> beq_nat_true thm
+prf 2834:2845 <> beq_nid_refl
+R2861:2863 Patt <> nid def
+R2878:2880 Coq.Init.Logic <> :type_scope:x_'='_x not
+R2867:2873 Patt <> beq_nid def
+R2877:2877 Patt <> n var
+R2875:2875 Patt <> n var
+R2881:2884 Coq.Init.Datatypes <> true constr
+R2911:2922 Coq.Arith.EqNat <> beq_nat_refl thm
+R2911:2922 Coq.Arith.EqNat <> beq_nat_refl thm
+prf 2953:2964 <> beq_nid_true
+R2981:2983 Patt <> nid def
+R3009:3011 Coq.Init.Logic <> :type_scope:x_'='_x not
+R3008:3008 Patt <> x var
+R3012:3012 Patt <> y var
+R2997:2999 Coq.Init.Logic <> :type_scope:x_'='_x not
+R2986:2992 Patt <> beq_nid def
+R2996:2996 Patt <> y var
+R2994:2994 Patt <> x var
+R3000:3003 Coq.Init.Datatypes <> true constr
+R3036:3047 Coq.Arith.EqNat <> beq_nat_true thm
+R3036:3047 Coq.Arith.EqNat <> beq_nat_true thm
