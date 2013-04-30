@@ -3,17 +3,6 @@ Require Import Coq.Lists.List.
 Require Import Coq.Classes.RelationClasses.
 Require Import Cases.
 
-(*
-Definition var := nat.
-Definition beq_var := beq_nat.
-
-Lemma beq_var_refl : forall (v : var), beq_var v v = true.
-Proof. intros. rewrite (beq_nat_refl v). reflexivity. Qed.
-
-Lemma beq_var_true : forall x y : var, beq_var x y = true -> x = y.
-Proof. intros. apply beq_nat_true. assumption. Qed.
-*)
-
 Module Type VALUE.
   Parameter val : Type.
   Parameter var : Type.
@@ -50,18 +39,6 @@ Module ENV (Import Value : VALUE).
 
   Definition mem (v : var) (e : env) : Prop :=
     bmem v e = true.
-
-  Fixpoint insert_binding (v : var) (t : val) (e : env) : option env :=
-    match e with
-      | mtEnv => Some (bind v t mtEnv)
-      | bind v' t' e' =>
-        if beq_var v v'
-          then None
-          else match insert_binding v t e' with
-                 | None => None
-                 | Some e' => Some (bind v' t' e')
-               end
-    end.
 
 (* Compose two environments. Fail if they overlap. *)
   Fixpoint compose_env (e1 e2 : env) {struct e1} : option env :=
@@ -501,6 +478,8 @@ Module ENV (Import Value : VALUE).
   Lemma env_comm_2 : forall (e1 e2 e12 : env),
     e1 & e2 = Some e12 -> exists e21, e2 & e1 = Some e21 /\ e12 ~= e21.
   Proof.
+    intros. Check env_comm
+    apply env_comm.
     intros. assert (exists x, e1 & e2 = Some x) by (exists e12; auto).
     apply env_join_concat in H0. rewrite H in H0. inversion H0. subst.
     destruct (e2 & e1) eqn:e21. 
