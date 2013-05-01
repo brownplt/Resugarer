@@ -1,26 +1,48 @@
 Require Import Coq.Arith.EqNat.
 Require Import Coq.Lists.List.
+Require Import Coq.Classes.RelationClasses.
+Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
 Require Import Cases.
-Require Import Patt.
-Require Import EnvModule.
+Require Import Term.
+Require Import Env2.
 
-Module TermImpl <: TERM.
-  Definition term := Patt.term.
-End TermImpl.
+Module ValueImpl <: VALUE.
+  Definition val := term.
+  Definition var := var.
+  Definition beq_var := beq_var.
 
-Module StdEnv := ENV(TermImpl).
+  Definition beq_var_refl := beq_var_refl.
+  Definition beq_var_sym := beq_var_sym.
+  Definition beq_var_trans := beq_var_trans.
+End ValueImpl.
+
+Module StdEnv := ENV(ValueImpl).
 Import StdEnv.
 
-Definition try_lookup (v : var) (e : env) : patt :=
+(*
+Fixpoint subs (e : env) (t : term) : term :=
+  match t with
+    | tvar v =>
+      match lookup v e with
+        | None => tvar v
+        | Some t => t
+      end
+    | node n ts =>
+      node n (map (subs e) ts)
+  end.
+Notation "e * t" := (subs e t).
+*)
+
+Definition try_lookup (v : var) (e : env) : term :=
   match lookup v e with
-    | None => pvar v
-    | Some t => term_to_patt t
+    | None => tvar v
+    | Some t => t
   end.
 
-Fixpoint subs (e : env) (p : patt) : patt :=
-  match p with
-    | pvar v => try_lookup v e
-    | pnode n ps => pnode n (map (subs e) ps)
+Fixpoint subs (e : env) (t : term) : term :=
+  match t with
+    | tvar v => try_lookup v e
+    | node n ts => node n (map (subs e) ts)
   end.
 
 Notation "e * p" := (subs e p).
@@ -30,115 +52,68 @@ Lemma lookup_eqv : forall (v : var) (e1 e2 : env),
 Proof.
   intros. unfold try_lookup. rewrite H. reflexivity.
 Qed.
+Hint Resolve lookup_eqv.
 
-Lemma env_eqv_subs : forall (e1 e2 : env) (p : patt),
-  e1 ~= e2 -> e1 * p = e2 * p.
+Lemma env_eqv_subs : forall (e1 e2 : env) (t : term),
+  e1 == e2 -> e1 * t = e2 * t.
 Proof.
-  intros. induction p.
+  intros. induction t.
   Case "var v". simpl. unfold env_eqv in H.
     apply lookup_eqv. apply H.
   Case "node n nil". reflexivity.
-  Case "node n (p :: ps)". simpl. rewrite IHp.
-  inversion IHp0. rewrite H1. reflexivity.
+  Case "node n (t :: ts)". simpl. rewrite IHt.
+  inversion IHt0. rewrite H1. reflexivity.
 Qed.
 
-Lemma mtEnv_subs_l : forall (p : patt), mtEnv * p = p.
+Lemma subs_mtEnv_l : forall (t : term), mtEnv * t = t.
 Proof.
-  intros. induction p; try reflexivity.
-  Case "node n (p :: ps)". inversion IHp0.
-    simpl. rewrite IHp. rewrite H0. rewrite H0. reflexivity.
+  intros. induction t; try reflexivity.
+  Case "node n (t :: ts)". inversion IHt0.
+    simpl. rewrite IHt. rewrite H0. rewrite H0. reflexivity.
   Qed.
 
-Lemma mem__subs_closed : forall (v : var) (e : env),
-  mem v e -> closed (e * (pvar v)).
-Proof.
-  intros. simpl.
-  unfold mem in H. unfold bmem in H.
-  unfold try_lookup. destruct (lookup v e).
-  Case "v in e".
-    apply term_to_patt_closed. inversion H.
-Qed.
-
-Lemma closed_subs : forall (p : patt) (e : env),
-  closed p -> e * p = p.
-Proof.
-  intros. induction p.
-  Case "var". inversion H.
-  Case "node n nil". reflexivity.
-  Case "node n (p :: ps)". simpl in *.
-    inversion H; clear H.
-    apply IHp in H0; clear IHp. rewrite H0.
-    apply IHp0 in H1; clear IHp0. inversion H1.
-      rewrite H2. rewrite H2. reflexivity.
-Qed.
-
-Lemma try_lookup_not_member : forall (v : vid) (e : env),
-  ~ (mem v e) -> try_lookup v e = pvar v.
+Lemma try_lookup_not_member : forall (v : var) (e : env),
+  ~ (mem v e) -> try_lookup v e = tvar v.
 Proof.
   intros. assert (G : lookup v e = None).
-    apply lookup_not_member. exact H.
+    apply lookup_not_mem. exact H.
   unfold try_lookup. rewrite G. reflexivity.
 Qed.
+Hint Resolve try_lookup_not_member.
 
-Lemma compose_try_lookup_l : forall (e1 e2 e12 : env) (v : vid),
-  mem v e1 ->
-  e1 & e2 = Some e12 ->
-  try_lookup v e12 = try_lookup v e1.
+
+Fixpoint compose (e1 e2 : env) : env :=
+  match e2 with
+    | mtEnv => e1
+    | bind v t e2 => bind v (e1 * t) (compose e1 e2)
+  end.
+
+Lemma compose_mtEnv_l : forall e, compose mtEnv e = e.
 Proof.
-  intros. apply lookup_eqv.
-  apply compose_lookup_l with (e2 := e2); assumption.
+  intros. induction e; try reflexivity.
+  simpl. rewrite IHe. rewrite subs_mtEnv_l. reflexivity.
 Qed.
 
-Lemma compose_try_lookup_r : forall (e1 e2 e12 : env) (v : vid),
-  mem v e2 ->
-  compose_env e1 e2 = Some e12 ->
-  try_lookup v e12 = try_lookup v e2.
+Add Parametric Morphism : subs with signature (equiv ==> eq ==> eq) as Subs_morph.
 Proof.
-  intros. apply lookup_eqv.
-  apply compose_lookup_r with (e1 := e1); assumption.
+  intros. apply env_eqv_subs. assumption.
 Qed.
 
-Lemma env_subs_comm : forall (e1 e2 e12 : env) (p : patt),
-  e1 & e2 = Some e12 ->
-  e12 * p = e1 * (e2 * p).
+Lemma compose_subs_eq : forall e1 e2 t,
+  e1 * (e2 * t) = (compose e1 e2) * t.
 Proof.
-  intros. induction p.
-  Case "var v".
-    destruct (bmem v e1) eqn:V1; destruct (bmem v e2) eqn:V2;
-      try apply bmem_true in V1; try apply bmem_true in V2.
-    SCase "v in e1, e2".
-      assert (C : e1 & e2 = None).
-      apply compose_overlap with (v := v). exact V1. exact V2.
-      rewrite C in H. inversion H.
-    SCase "v in e1, not in e2".
-      simpl. apply bmem_false in V2.
-      assert (L2 : try_lookup v e2 = pvar v).
-        apply try_lookup_not_member. exact V2.
-      assert (L12 : try_lookup v e12 = try_lookup v e1).
-        apply compose_try_lookup_l with (e2 := e2). exact V1. exact H.
-      rewrite L2. rewrite L12. simpl. reflexivity.
-    SCase "v in e2, not in e1".
-      simpl. apply bmem_false in V1.
-      assert (L12 : try_lookup v e12 = try_lookup v e2).
-        apply compose_try_lookup_r with (e1 := e1). exact V2. exact H.
-      assert (G : closed (try_lookup v e2)).
-        apply mem__subs_closed. exact V2.
-      apply closed_subs with (e := e1) in G.
-      rewrite G. rewrite L12. reflexivity.
-    SCase "v not in e1, e2".
-      simpl. apply bmem_false in V1. apply bmem_false in V2.
-      assert (L12 : try_lookup v e12 = try_lookup v e2).
-        apply lookup_eqv.
-        apply compose_not_member with (e1 := e1). exact V1. exact H.
-      assert (L2 : try_lookup v e2 = pvar v).
-        apply try_lookup_not_member. exact V2.
-      assert (L1 : try_lookup v e1 = pvar v).
-        apply try_lookup_not_member. exact V1.
-      rewrite L12. rewrite L2. simpl. rewrite L1. reflexivity.
-  Case "node n nil".
+  intros.
+  induction t.
+  Case "t = var v".
+    simpl. induction e2 as [|v2 t2 e2].
+    SCase "e2 = mtEnv".
+      reflexivity.
+    SCase "e2 = bind v2 t2 e2".
+      simpl. unfold try_lookup, lookup.
+      destruct (ValueImpl.beq_var v v2); auto.
+  Case "t = node nil".
     reflexivity.
-  Case "node n (t :: ts)".
-    simpl. rewrite IHp.
-    inversion IHp0. rewrite H1.
-    reflexivity.
+  Case "t = node n (t::ts)".
+    simpl in *. rewrite IHt. inversion IHt0.
+    rewrite H0. reflexivity.
 Qed.
