@@ -69,6 +69,7 @@ Definition term_rec := fun
 Lemma beq_var_refl : forall (x : var),
   beq_var x x = true.
 Proof. intro. rewrite <- beq_nat_refl. reflexivity. Qed.
+Hint Resolve beq_var_refl.
 
 Lemma beq_var_sym : forall (x y : var),
   beq_var x y = beq_var y x.

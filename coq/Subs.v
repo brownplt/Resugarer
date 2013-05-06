@@ -4,7 +4,7 @@ Require Import Coq.Classes.RelationClasses.
 Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
 Require Import Cases.
 Require Import Term.
-Require Import Env2.
+Require Import Env.
 
 Module ValueImpl <: VALUE.
   Definition val := term.
@@ -47,6 +47,27 @@ Fixpoint subs (e : env) (t : term) : term :=
 
 Notation "e * p" := (subs e p).
 
+Definition env_eqv (e1 e2 : env) :=
+  forall (v : var), try_lookup v e1 = try_lookup v e2.
+
+
+Lemma env_eqv_refl : forall e, env_eqv e e. 
+Proof. unfold env_eqv. reflexivity. Qed.
+Lemma env_eqv_sym : forall e f, env_eqv e f -> env_eqv f e.
+Proof. unfold env_eqv. intros. symmetry; auto. Qed.
+Lemma env_eqv_trans : forall e f g, env_eqv e f -> env_eqv f g -> env_eqv e g.
+Proof. unfold env_eqv. intros. rewrite H; auto. Qed.
+
+Add Relation env env_eqv
+  reflexivity proved by env_eqv_refl
+  symmetry proved by env_eqv_sym
+  transitivity proved by env_eqv_trans
+    as Env_eqv.
+
+Instance env_eqv_Setoid : Setoid env :=
+  {equiv := env_eqv; setoid_equiv := Env_eqv}.
+
+
 Lemma lookup_eqv : forall (v : var) (e1 e2 : env),
   lookup v e1 = lookup v e2 -> try_lookup v e1 = try_lookup v e2.
 Proof.
@@ -59,7 +80,7 @@ Lemma env_eqv_subs : forall (e1 e2 : env) (t : term),
 Proof.
   intros. induction t.
   Case "var v". simpl. unfold env_eqv in H.
-    apply lookup_eqv. apply H.
+    rewrite H. reflexivity.
   Case "node n nil". reflexivity.
   Case "node n (t :: ts)". simpl. rewrite IHt.
   inversion IHt0. rewrite H1. reflexivity.
@@ -70,7 +91,11 @@ Proof.
   intros. induction t; try reflexivity.
   Case "node n (t :: ts)". inversion IHt0.
     simpl. rewrite IHt. rewrite H0. rewrite H0. reflexivity.
-  Qed.
+Qed.
+
+Lemma subs_cons : forall e n t ts,
+  e * node n (t :: ts) = node n (e * t :: map (subs e) ts).
+Proof. auto. Qed.
 
 Lemma try_lookup_not_member : forall (v : var) (e : env),
   ~ (mem v e) -> try_lookup v e = tvar v.
