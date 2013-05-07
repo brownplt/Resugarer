@@ -351,10 +351,54 @@
 (check-equal? (unexpand (expand (test-pattern (cond (^ else (+ 1 1))))))
               (test-pattern (cond (^ else (+ 1 1)))))
 
-;(check-equal? (unchecked-unexpand (expand (test-pattern (cond ((+ a 2) 1) (else 2)))))
-;              (test-pattern (cond ((+ a 2) 1) (else 2))))
-
 (show-pattern (expand (test-pattern (cond (^ (+ a 2) 1) (^ else 2)))))
+
+
+;;;;;;;;;;;;;;
+;;; Letrec ;;;
+;;;;;;;;;;;;;;
+
+(define-syntax reclet-lets
+  (syntax-rules ()
+    [(reclet-lets () b) b]
+    [(reclet-lets (v vs ...) b)
+     (let ((v "gremlin")) (reclet-lets (vs ...) b))]))
+
+(define-syntax reclet-sets
+  (syntax-rules ()
+    [(reclet-sets () b) b]
+    [(reclet-sets ((v x) (vs xs) ...) b)
+     (begin (set! v x) (reclet-sets ((vs xs) ...) b))]))
+
+(define-syntax reclet
+  (syntax-rules ()
+    [(reclet ((v x) ...) b)
+     (reclet-lets (v ...) (reclet-sets ((v x) ...) b))]))
+
+(check-equal?
+  (reclet ((x 1) (y (+ x 1)) (x 2) (z (+ x y))) (+ x z))
+  6)
+
+(check-equal? (reclet ((x x)) x) "gremlin")
+
+(check-equal?
+ (let ((x 1)) (reclet ((x 2)) x))
+ 2)
+
+(check-equal?
+ ((λ (x) (reclet ((x 2)) x)) 1)
+ 2)
+
+(check-equal?
+ (reclet ((x 2)) (let ((x 1)) x))
+ 1)
+
+(check-equal?
+ (reclet ((x 1) (y 2))
+   (let ((x 3))
+     (reclet ((y 4))
+             (+ x y))))
+ 7)
 
 #|
 (define (tag-cond2 id e)
