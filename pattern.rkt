@@ -278,12 +278,12 @@
     (define (strip-origin x y)
       (define (strip x)
         (if (tag? x) (strip (tag-term x)) x))
-      (if (or (not origin)
-              (nominal? x)
-              (has-origin? x origin)
-              (pvar? y))
-          (strip x)
-          (fail)))
+      ; This conditional is very delicate, and probably wrong.
+      (cond [(nominal? x)           (strip x)]
+            [(pvar? y)              x]
+            [(not origin)           (strip x)]
+            [(has-origin? x origin) (strip x)]
+            [else                   (fail)]))
       
       (match* ((strip-origin x y) y)
         [((literal x) (literal x))     (succeed)]

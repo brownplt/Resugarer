@@ -6,7 +6,7 @@
 
 (require rackunit)
 (require redex)
-(require "resugar.rkt")
+(require "resugar-redex.rkt")
 
 
   ;;;;;;;;;;;;;;;;
@@ -15,22 +15,32 @@
 
 
 (define-language Min
-  (p ((store (x v) ...) e))
+  (p (top s e))
   (e (apply o e ...)
-     (+ o e ...)
+     (op o e ...)
+;     (+ o e ...)
      (set! o x e)
      (begin o e e ...)
      (if o e e e)
      (rec x e)
      x
      v)
+  (op + first rest empty? eq?)
+  (s (store (x v) ...))
   (v (lambda o x e)
      number
-     boolean)
+     boolean
+     empty
+     (cons o v v))
   (x variable-not-otherwise-mentioned)
-  (pc ((store (x v) ...) ec))
+  (pc (top (store (x v) ...) ec))
   (ec (apply o ec e)
       (apply o v ec)
+      (prim o op v ... ec e ...)
+      (cons o ec e)
+      (cons o v ec)
+;      (+ o ec e)
+;      (+ o v ec)
       (set! o variable ec)
       (begin o ec e e ...)
       (if o ec e e)
@@ -69,11 +79,13 @@
   [(subs x e (if o e_1 e_2 e_3))
    (if o (subs x e e_1) (subs x e e_2) (subs x e e_3))]
   [(subs x e (begin o e_1 ...))
-   (begin o (subs x e e_1) ...)])
+   (begin o (subs x e e_1) ...)]
+  [(subs x e (op o e_1 ...))
+   (op o (subs x e e_1) ...)])
 
-(define-metafunction Min
-  sum : number ... -> number
-  [(sum number ...) ,(apply + (term (number ...)))])
+;(define-metafunction Min
+;  sum : number ... -> number
+;  [(sum number ...) ,(apply + (term (number ...)))])
 
 (define-metafunction Min
   look : x (store (x v) ...) -> v
@@ -82,7 +94,7 @@
    (side-condition (not (member (term x) (term (x_1 ...)))))])
 
 (define-metafunction Min
-  set : x v_new (store (x v) ...) -> (store (x v) ...)
+  set : x v (store (x v) ...) -> (store (x v) ...)
   [(set x v_new (store (x_1 v_1) ... (x v) (x_2 v_2) ...))
    (store (x_1 v_1) ... (x v_new) (x_2 v_2) ...)
    (side-condition (not (member (term x) (term (x_1 ...)))))])
@@ -92,37 +104,56 @@
    Min
    (--> (in-hole pc_1 (begin o v e_1 e_2 ...))
         (in-hole pc_1 (begin o e_1 e_2 ...))
-        "begin many")
+        "begin-many")
    
    (--> (in-hole pc_1 (begin o e_1))
         (in-hole pc_1 e_1)
-        "begin one")
+        "begin-one")
+ 
+   (--> (in-hole pc (empty? o empty))     (in-hole pc #t))
+   (--> (in-hole pc (empty? o e))         (in-hole pc #f))
+   (--> (in-hole pc (+ o v ...))          (in-hole pc ,(apply + (term (v ...)))))
+   (--> (in-hole pc (eq? o v_1 v_2))      (in-hole pc ,(eq? (term v_1) (term v_2))))
+   (--> (in-hole pc (first o (cons x y))) (in-hole pc x))
+   (--> (in-hole pc (rest o (cons x y)))  (in-hole pc y))
    
-   (--> (in-hole pc_1 (+ o number ...))
-        (in-hole pc_1 (sum number ...))
-        "addition")
+;   (--> (in-hole pc_1 (+ o number ...))
+;        (in-hole pc_1 (sum number ...))
+;        "plus")
    
-   (--> ((store (x_1 v_1) ...) (in-hole ec x))
-        ((store (x_1 v_1) ...) (in-hole ec (look x (store (x_1 v_1) ...))))
-        "deref")
+   (--> (top s (in-hole ec x))
+        (top s (in-hole ec (look x s)))
+        "variable")
    
-   (--> ((store (x_1 v_1) ...)           (in-hole ec (set! o x v)))
-        ((set x v (store (x_1 v_1) ...)) (in-hole ec v))
+   (--> (top s           (in-hole ec (set! o_2 x v)))
+        (top (set x v s) (in-hole ec v))
         "set!")
 
-   (--> ((store (x_1 v_1) ...)           (in-hole ec (apply o_1 (lambda o_2 x e) v)))
-        ((store (x_1 v_1) ... (x_new v)) (in-hole ec (subs x x_new e)))
+   (--> (top (store (x_1 v_1) ...)
+             (in-hole ec (apply o_1 (lambda o_2 x e) v)))
+        (top (store (x_1 v_1) ... (x_new v))
+             (in-hole ec (subs x x_new e)))
         (where x_new ,(variable-not-in (term (x_1 ...)) 'x))
-        "beta")))
+        "apply")
+  
+   (--> (in-hole pc (if o #t e_1 e_2))
+        (in-hole pc e_1)
+        "if-true")
+  
+   (--> (in-hole pc (if o #f e_1 e_2))
+        (in-hole pc e_2)
+        "if-false")))
 
    ;with [(--> a ,(collect (term b))) (==> a b)]))
 
 
-(define (run-traces e)
-  (traces red `((store) ,e)))
+  ;;;;;;;;;;;;;;;;;;;;;;;;
+  ;;; Language Testing ;;;
+  ;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (define (run-eval e)
-  (car (apply-reduction-relation* red `((store) ,e))))
+  (third (car (apply-reduction-relation* red `(top (store) ,e)))))
 
 (define o '(origins #f))
 
@@ -130,23 +161,72 @@
 (run-eval `(+ ,o 2 3))
 (run-eval `(apply ,o (lambda ,o x (begin ,o (set! ,o x 1) x)) 3))
 (run-eval `(apply ,o (lambda ,o x (apply ,o (lambda ,o x x) 2)) 1))
+(run-eval `(apply ,o (lambda ,o x (+ ,o x 1)) (+ ,o 1 2)))
 
 
   ;;;;;;;;;;;;;;
   ;;; Macros ;;;
   ;;;;;;;;;;;;;;
 
+(define MAMin
+  (redex-language "Min" Min red
+                  (λ (expr store) `(top ,store ,expr))
+                  (λ (top) (cons (third top) (second top)))))
+
+(define-syntax-rule (test-eval p)
+  (macro-aware-eval MAMin (make-pattern p) (term (store)) #t))
+
+
 
 (define-macro let () ()
   [(let x e b)
    (apply (lambda x b) e)])
 
-(define-syntax-rule (test-eval t)
-  (macro-aware-eval Min red (make-pattern t) #t))
+(define-macro letrec () (let)
+  [(letrec x e b)
+   (let x 0 (begin (set! x e) b))])
+
+(define-macro cond (else) ()
+  [(cond) 0]
+  [(cond [^ x y] xs ...) (if x y (cond xs ...))]
+  [(cond [^ else x]) x])
+
+(define-macro process-state (accept ->) ()
+  [(_ accept)
+   (lambda (stream)
+     (cond
+       [^ (empty? stream) #t]
+       [^ else #f]))]
+  [(_ [^ label -> target] ...)
+   (lambda (stream)
+     (cond
+       [^ (empty? stream) #f]
+       [^ (eq? label (first stream)) (target (rest stream))]
+       ...
+       [else #f]))])
+
+(define-macro automaton (:) (process-state)
+  [(_ init-state
+    [^ state : response ...]
+    ...)
+   (letrec [^ [^ state (process-state response ...)] ...]
+     init-state)])
 
 (test-eval (+ 1 2))
+(test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
 (test-eval (let x 3 (+ x x)))
-
+(test-eval (letrec x (lambda y x) (apply x 6)))
+#|
+(test-eval
+ ((let M (automaton
+          init
+          [init : [c -> more]]
+          [more : [a -> more]
+                  [d -> more]
+                  [r -> end]]
+          [end :  accept])
+    (M (cons 'c (cons 'a (cons 'd (cons 'r empty))))))))
+|#
 
 #|
 (run '(letrec ((f (lambda (x)

@@ -2,10 +2,11 @@
 
 (require rackunit)
 (require redex)
-(require "utility.rkt")
-(require "pattern.rkt")
-(require "macro.rkt")
-(require "resugar.rkt")
+;(require "utility.rkt")
+;(require "pattern.rkt")
+;(require "macro.rkt")
+;(require "resugar.rkt")
+(require "resugar-redex.rkt")
 
 
   ;;;;;;;;;;;;;;;;
@@ -128,15 +129,11 @@
   ;;;;;;;;;;;;;;;
 
 
-(define-syntax-rule (test-conversion t)
-  (check-equal? (pattern->term (term->pattern (term t)))
-                (term t)))
-
-(test-conversion (+ (origins ()) 1 2))
-(test-conversion (if0 (origins (a b)) (+ (origins (b a)) x 3) 5 6))
+(define MAMirror
+  (redex-language "Mirror" Mirror red (λ (x y) x) (λ (x) (cons x 'nuthin))))
 
 (define-syntax-rule (test-eval t)
-  (macro-aware-eval Mirror red (make-pattern t) #t))
+  (macro-aware-eval MAMirror (make-pattern t) 'nuthin #t))
 
 (define t (term (+ (origins ()) 1 2)))
 (test-eval (+ 1 2))
