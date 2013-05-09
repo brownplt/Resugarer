@@ -18,29 +18,25 @@
   (p (top s e))
   (e (apply o e ...)
      (op o e ...)
-;     (+ o e ...)
      (set! o x e)
      (begin o e e ...)
      (if o e e e)
      (rec x e)
      x
      v)
-  (op + first rest empty? eq?)
+  (op + cons first rest empty? eq?)
   (s (store (x v) ...))
   (v (lambda o x e)
      number
      boolean
+     string
      empty
      (cons o v v))
   (x variable-not-otherwise-mentioned)
   (pc (top (store (x v) ...) ec))
   (ec (apply o ec e)
       (apply o v ec)
-      (prim o op v ... ec e ...)
-      (cons o ec e)
-      (cons o v ec)
-;      (+ o ec e)
-;      (+ o v ec)
+      (op o v ... ec e ...)
       (set! o variable ec)
       (begin o ec e e ...)
       (if o ec e e)
@@ -75,7 +71,7 @@
    (apply o (subs x_1 e_1 e_2) ...)]
   [(subs x e number) number]
   [(subs x e boolean) boolean]
-  [(subs x e (+ o e_1 ...)) (+ o (subs x e e_1) ...)]
+;  [(subs x e (+ o e_1 ...)) (+ o (subs x e e_1) ...)]
   [(subs x e (if o e_1 e_2 e_3))
    (if o (subs x e e_1) (subs x e e_2) (subs x e e_3))]
   [(subs x e (begin o e_1 ...))
@@ -110,12 +106,12 @@
         (in-hole pc_1 e_1)
         "begin-one")
  
-   (--> (in-hole pc (empty? o empty))     (in-hole pc #t))
-   (--> (in-hole pc (empty? o e))         (in-hole pc #f))
-   (--> (in-hole pc (+ o v ...))          (in-hole pc ,(apply + (term (v ...)))))
-   (--> (in-hole pc (eq? o v_1 v_2))      (in-hole pc ,(eq? (term v_1) (term v_2))))
-   (--> (in-hole pc (first o (cons x y))) (in-hole pc x))
-   (--> (in-hole pc (rest o (cons x y)))  (in-hole pc y))
+   (--> (in-hole pc (empty? o empty))               (in-hole pc #t))
+   (--> (in-hole pc (empty? o (cons o_1 v_1 v_2)))  (in-hole pc #f))
+   (--> (in-hole pc (+ o v ...))                    (in-hole pc ,(apply + (term (v ...)))))
+   (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(eq? (term v_1) (term v_2))))
+   (--> (in-hole pc (first o_1 (cons o_2 v_1 v_2))) (in-hole pc v_1))
+   (--> (in-hole pc (rest o_1 (cons o_2 v_1 v_2)))  (in-hole pc v_2))
    
 ;   (--> (in-hole pc_1 (+ o number ...))
 ;        (in-hole pc_1 (sum number ...))
@@ -157,13 +153,30 @@
 
 (define o '(origins #f))
 
-(run-eval `(apply ,o (lambda ,o x x) 3))
-(run-eval `(+ ,o 2 3))
-(run-eval `(apply ,o (lambda ,o x (begin ,o (set! ,o x 1) x)) 3))
-(run-eval `(apply ,o (lambda ,o x (apply ,o (lambda ,o x x) 2)) 1))
-(run-eval `(apply ,o (lambda ,o x (+ ,o x 1)) (+ ,o 1 2)))
+(define-syntax-rule
+  (eval-tests [actual expected] ...)
+  (begin (check-equal? (run-eval actual) expected) ...))
 
+(eval-tests
+ [`(apply ,o (lambda ,o x x) 3) 3]
+ [`(+ ,o 2 3) 5]
+ [`(eq? ,o "a" "a") #t]
+ [`(eq? ,o "a" "b") #f]
+ [`(empty? ,o empty) #t]
+ [`(empty? ,o (cons ,o "a" "b")) #f]
+ [`(cons ,o (+ ,o 1 2) (+ ,o 3 4)) `(cons ,o 3 7)]
+ [`(+ ,o (+ ,o 1 2) (+ ,o 3 4)) 10]
+ [`(rest ,o (first ,o (cons ,o (cons ,o "a" (cons ,o "b" empty)) "c")))
+  `(cons ,o "b" empty)]
+ [`(apply ,o (lambda ,o x (begin ,o (set! ,o x 1) x)) 3)    1]
+ [`(apply ,o (lambda ,o x (apply ,o (lambda ,o x x) 2)) 1)  2]
+ [`(apply ,o (lambda ,o x (+ ,o x 1)) (+ ,o 1 2))           4]
+ [`(begin ,o (+ ,o 1 2) (+ ,o 3 4) (+ ,o 5 6))             11]
+ [`(if ,o #t 1 2) 1]
+ [`(if ,o #f 1 2) 2]
+ )
 
+#|
   ;;;;;;;;;;;;;;
   ;;; Macros ;;;
   ;;;;;;;;;;;;;;
@@ -238,4 +251,5 @@
                     (letrec ((y 1))
                       (f 1)))))
         (f 3)))
+|#
 |#
