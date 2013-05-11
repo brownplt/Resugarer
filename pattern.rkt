@@ -141,6 +141,7 @@
                [else                            (constant p)])]
             [(number? p)  (constant p)]
             [(boolean? p) (constant p)]
+            [(string? p)  (constant p)]
             [(list? p)
              (match p
                [(list '^ ps ... q '... rs ...) ; (^ P1 ... Pn Q* R1 ... Rm)
