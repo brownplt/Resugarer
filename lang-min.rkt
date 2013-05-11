@@ -290,7 +290,7 @@
    (letrecs [^ [^ state (process-state response ...)] ...]
      init-state)])
 
-#|  Totally Bonkers
+#|  Totally Bonkers |#
 
 (define-macro engine-part (->) (cond)
   [(engine-part "accept")
@@ -308,6 +308,28 @@
      (cond [^ (eq? s state) (apply (engine-part response ...) i)]
            ...))])
 
+(define-macro run () ()
+  [(run fun engine state inputs)
+   (apply fun engine state inputs)])
+
+(define-macro run-body () (run lambdas cond let)
+  [(run-body)
+   (lambdas [^ eng state inputs]
+      (let next (apply eng state (first inputs))
+        (cond [^ (eq? next #f) #f]
+              [^ (eq? next #t) #t]
+              [^ #t (let inputs (rest inputs)
+                      (run run-fun eng next inputs))])))])
+
+(define run-fun
+  '(lambdas [^ engine state inputs]
+     (let next (apply engine state (first inputs))
+       (cond [^ (eq? next #f) #f]
+             [^ (eq? next #t) #t]
+             [^ #t (let inputs (rest inputs)
+                     (run engine next inputs))]))))
+
+#|
 (define-macro run () (let lambdas cond)
   [(run engine state [^])
    #f]
@@ -316,12 +338,29 @@
      (cond [^ (eq? next #f) #f]
            [^ (eq? next #t) #t]
            [^ #t (run engine next [^ xs ...])]))])
+|#
 
 (test-eval (engine [^ "x" : "accept"]))
-(test-eval (run (engine [^ "x" : "accept"]) "x" [^]))
-(test-eval (run (engine [^ "x" : "accept"]) "x" [^ "x"]))
-(test-eval (run (engine [^ "more" : [^ "a" -> "more"]]) "more" [^ "a" "a" "a"]))
-|#
+;(test-eval (run (engine [^ "x" : "accept"]) "x" empty))
+;(test-eval (run (engine [^ "x" : "accept"]) "x" (cons "x" empty)))
+;(test-eval (run (engine [^ "more" : [^ "a" -> "more"]]) "more"
+;                (cons "a" (cons "a" (cons "a" empty)))))
+(test-eval
+ (letrec run-fun
+   (run-body)
+;   (lambdas [^ eng state inputs]
+;     (let next (apply eng state (first inputs))
+;       (cond [^ (eq? next #f) #f]
+;             [^ (eq? next #t) #t]
+;             [^ #t (let inputs (rest inputs)
+;                     (run run-fun eng next inputs))])))
+   (lets [^ [^ an-engine
+               (engine [^ "more" : [^ "a" -> "more"]])]
+            [^ the-input
+               (cons "a" (cons "a" (cons "a" empty)))]]
+         (run run-fun an-engine "more" the-input))))
+
+#|
 
 (test-eval (+ 1 2))
 (test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
@@ -366,6 +405,8 @@
          init
          [^ init : [^ "a" -> init]])
    (apply M (cons "a" (cons "a" (cons "a" empty))))))
+
+|#
 
 #|
 (run '(letrec ((f (lambda (x)
