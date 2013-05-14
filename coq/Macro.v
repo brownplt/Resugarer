@@ -1,3 +1,50 @@
+Require Import Term.
+Require Import Subs.
+Require Import Match.
+Require Import Coq.Classes.RelationClasses.
+Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
+Import StdEnv.
+
+Inductive simple_macro :=
+| smacro : term -> term -> simple_macro.
+
+Fixpoint sexpand m t : option term :=
+  match m with
+    | smacro p q =>
+      match t / p with
+        | None => None
+        | Some e => Some (e * q)
+      end
+  end.
+
+Fixpoint sunexpand m s t : option term :=
+  match m with
+    | smacro p q =>
+      match t / q with
+        | None => None
+        | Some e1 =>
+          match s / q with
+            | None => None
+            | Some e2 => Some (e2 * (e1 * p))
+          end
+      end
+  end.
+
+Lemma simple_lens : forall m t t',
+  sexpand m t = Some t' ->
+  sunexpand m t t' = Some t.
+Proof.
+  intros. destruct m as [p q].
+  simpl in *. destruct (t / p) as [t_p|] eqn:TP; inversion_clear H.
+  destruct (t_p * q / q) eqn:TPQ.
+  assert (MT: e == t_p).
+    apply subs_match_eq in TPQ. symmetry; assumption.
+    admit. (* fvars! *)
+    SearchAbout tmatch.
+    
+  Check subs_match_eq.
+  rewrite subs_match_eq
+  
 
 Definition mid := nat.
 Definition var := nat.

@@ -87,6 +87,7 @@ Proof. intros. apply beq_nat_true. assumption. Qed.
 
 Lemma beq_id_refl : forall (n : id), beq_id n n = true.
 Proof. intros. rewrite (beq_nat_refl n). reflexivity. Qed.
+Hint Resolve beq_id_refl.
 
 Lemma beq_id_true : forall x y : id, beq_id x y = true -> x = y.
 Proof. intros. apply beq_nat_true. assumption. Qed.

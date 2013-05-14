@@ -86,7 +86,7 @@ Proof.
   inversion IHt0. rewrite H1. reflexivity.
 Qed.
 
-Lemma subs_mtEnv_l : forall (t : term), mtEnv * t = t.
+Lemma subs_mtEnv : forall (t : term), mtEnv * t = t.
 Proof.
   intros. induction t; try reflexivity.
   Case "node n (t :: ts)". inversion IHt0.
@@ -97,14 +97,14 @@ Lemma subs_cons : forall e n t ts,
   e * node n (t :: ts) = node n (e * t :: map (subs e) ts).
 Proof. auto. Qed.
 
-Lemma try_lookup_not_member : forall (v : var) (e : env),
+Lemma try_lookup_not_mem : forall (v : var) (e : env),
   ~ (mem v e) -> try_lookup v e = tvar v.
 Proof.
   intros. assert (G : lookup v e = None).
     apply lookup_not_mem. exact H.
   unfold try_lookup. rewrite G. reflexivity.
 Qed.
-Hint Resolve try_lookup_not_member.
+Hint Resolve try_lookup_not_mem.
 
 
 Fixpoint compose (e1 e2 : env) : env :=
@@ -116,7 +116,7 @@ Fixpoint compose (e1 e2 : env) : env :=
 Lemma compose_mtEnv_l : forall e, compose mtEnv e = e.
 Proof.
   intros. induction e; try reflexivity.
-  simpl. rewrite IHe. rewrite subs_mtEnv_l. reflexivity.
+  simpl. rewrite IHe. rewrite subs_mtEnv. reflexivity.
 Qed.
 
 Add Parametric Morphism : subs with signature (equiv ==> eq ==> eq) as Subs_morph.
@@ -142,3 +142,20 @@ Proof.
     simpl in *. rewrite IHt. inversion IHt0.
     rewrite H0. reflexivity.
 Qed.
+
+Lemma subs_lookup_eqv : forall a b,
+  a == b <-> forall t, a * t = b * t.
+Proof.
+  intros. simpl. unfold env_eqv.
+  split; intros.
+  Case "a == b -> at = bt".
+    induction t; auto.
+    SCase "t = tvar v".
+      simpl. apply H.
+    SCase "t = node n (t::ts)".
+      simpl. rewrite IHt. simpl in IHt0. inversion IHt0. rewrite H1.
+      reflexivity.
+  Case "at = bt -> a == b".
+    specialize H with (tvar v). simpl in H. exact H.
+  Qed.
+    
