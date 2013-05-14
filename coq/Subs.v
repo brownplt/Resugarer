@@ -1,5 +1,6 @@
 Require Import Coq.Arith.EqNat.
 Require Import Coq.Lists.List.
+Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.RelationClasses.
 Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
 Require Import Cases.
@@ -8,30 +9,19 @@ Require Import Env.
 
 Module ValueImpl <: VALUE.
   Definition val := term.
+End ValueImpl.
+
+Module VarImpl <: VARIABLE.
   Definition var := var.
   Definition beq_var := beq_var.
 
   Definition beq_var_refl := beq_var_refl.
   Definition beq_var_sym := beq_var_sym.
   Definition beq_var_trans := beq_var_trans.
-End ValueImpl.
+End VarImpl.
 
-Module StdEnv := ENV(ValueImpl).
+Module StdEnv := ENV(ValueImpl)(VarImpl).
 Import StdEnv.
-
-(*
-Fixpoint subs (e : env) (t : term) : term :=
-  match t with
-    | tvar v =>
-      match lookup v e with
-        | None => tvar v
-        | Some t => t
-      end
-    | node n ts =>
-      node n (map (subs e) ts)
-  end.
-Notation "e * t" := (subs e t).
-*)
 
 Definition try_lookup (v : var) (e : env) : term :=
   match lookup v e with
@@ -98,7 +88,7 @@ Lemma subs_cons : forall e n t ts,
 Proof. auto. Qed.
 
 Lemma try_lookup_not_mem : forall (v : var) (e : env),
-  ~ (mem v e) -> try_lookup v e = tvar v.
+  mem v e = false -> try_lookup v e = tvar v.
 Proof.
   intros. assert (G : lookup v e = None).
     apply lookup_not_mem. exact H.
@@ -135,7 +125,7 @@ Proof.
       reflexivity.
     SCase "e2 = bind v2 t2 e2".
       simpl. unfold try_lookup, lookup.
-      destruct (ValueImpl.beq_var v v2); auto.
+      destruct (VarImpl.beq_var v v2); auto.
   Case "t = node nil".
     reflexivity.
   Case "t = node n (t::ts)".
@@ -158,4 +148,3 @@ Proof.
   Case "at = bt -> a == b".
     specialize H with (tvar v). simpl in H. exact H.
   Qed.
-    

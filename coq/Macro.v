@@ -23,56 +23,33 @@ Fixpoint sunexpand m s t : option term :=
       match t / q with
         | None => None
         | Some e1 =>
-          match s / q with
+          match s / p with
             | None => None
             | Some e2 => Some (e2 * (e1 * p))
           end
       end
   end.
 
+(* Unproven! *)
+
 Lemma simple_lens : forall m t t',
+  closed t ->
   sexpand m t = Some t' ->
   sunexpand m t t' = Some t.
 Proof.
   intros. destruct m as [p q].
-  simpl in *. destruct (t / p) as [t_p|] eqn:TP; inversion_clear H.
+  simpl in *. destruct (t / p) as [t_p|] eqn:TP; inversion_clear H0.
   destruct (t_p * q / q) eqn:TPQ.
-  assert (MT: e == t_p).
-    apply subs_match_eq in TPQ. symmetry; assumption.
+  assert (E: e == t_p).
+    apply subs_tmatch_eq in TPQ. symmetry; assumption.
     admit. (* fvars! *)
-    SearchAbout tmatch.
-    
-  Check subs_match_eq.
-  rewrite subs_match_eq
-  
+  assert (EP: e * p = t).
+    rewrite E. apply tmatch_subs_eq. assumption.
+  rewrite EP. f_equal. apply closed_subs; assumption.
+  admit. (* well-formedness! *)
+Qed.
 
-Definition mid := nat.
-Definition var := nat.
-
-Definition Pmatch (patt env : Type) :=
-  patt -> patt -> option env.
-
-Definition Subs (patt env : Type) :=
-  env -> patt -> patt.
-
-Definition Lensy (patt env : Type)
-  (pmatch : Pmatch patt env)
-  (subs : Subs patt env) : Prop :=
-    forall (p q : patt) (e : env),
-      pmatch p q = Some e -> subs e q = p.
-
-
-Inductive temp {patt : Type} :=
-| tpatt : patt -> temp
-| tlet : var -> mid -> temp -> temp.
-
-Inductive macro {patt : Type} :=
-| mnil : macro
-| mcons : patt -> patt -> macro -> macro.
-
-Inductive dict {patt : Type} :=
-| mtdict : dict
-| bind : mid -> @macro patt -> dict -> dict.
+(* Scrap *)
 
 Inductive expand {patt env : Type}
   {pmatch : Pmatch patt env}

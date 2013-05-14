@@ -6,6 +6,9 @@ Require Import Cases.
 
 Module Type VALUE.
   Parameter val : Type.
+End VALUE.
+
+Module Type VARIABLE.
   Parameter var : Type.
   Parameter beq_var : var -> var -> bool.
 
@@ -15,9 +18,9 @@ Module Type VALUE.
     beq_var x y = beq_var y x.
   Parameter beq_var_trans : forall (x y z : var),
     beq_var x y = true -> beq_var y z = true -> beq_var x z = true.
-End VALUE.
+End VARIABLE.
 
-Module ENV (Import Value : VALUE).
+Module ENV (Import Value : VALUE) (Import Var : VARIABLE).
 
   Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
 
@@ -56,57 +59,11 @@ Module ENV (Import Value : VALUE).
           else lookup v e
     end.
 
-  Definition bmem (v : var) (e : env) : bool :=
+  Definition mem (v : var) (e : env) : bool :=
     match lookup v e with
       | None => false
       | Some _ => true
     end.
-
-  Definition mem (v : var) (e : env) : Prop :=
-    bmem v e = true.
-
-(*
-  Definition env_eqv (e1 e2 : env) :=
-    forall (v : var), lookup v e1 = lookup v e2.
-
-  Lemma env_eqv_refl : forall e, env_eqv e e. 
-  Proof. unfold env_eqv. reflexivity. Qed.
-  Lemma env_eqv_sym : forall e f, env_eqv e f -> env_eqv f e.
-  Proof. unfold env_eqv. intros. symmetry; auto. Qed.
-  Lemma env_eqv_trans : forall e f g, env_eqv e f -> env_eqv f g -> env_eqv e g.
-  Proof. unfold env_eqv. intros. rewrite H; auto. Qed.
-
-  Add Relation env env_eqv
-  reflexivity proved by env_eqv_refl
-  symmetry proved by env_eqv_sym
-    transitivity proved by env_eqv_trans
-    as Env_eqv.
-
-  Instance env_eqv_Setoid : Setoid env :=
-    {equiv := env_eqv; setoid_equiv := Env_eqv}.
-
-  Add Parametric Morphism : lookup with signature (equiv ==> equiv ==> eq) as Lookup_beq_var.
-  Proof.
-    intros. generalize dependent x0; induction y0; intros x0 H0; rewrite H0; auto.
-    simpl. destruct (beq_var x v) eqn:xv; destruct (beq_var y v) eqn:yv;
-    try change (x == v) in xv; try change (y == v) in yv; try rewrite <- Bool.not_true_iff_false in *;
-    try change (y =/= v) in yv; try change (x =/= v) in xv; auto. 
-    rewrite <- xv in yv. 
-    symmetry in H; contradiction. rewrite <- yv in xv; contradiction.
-    apply IHy0. reflexivity.
-  Qed.
-
-  Add Parametric Morphism : bmem with signature (equiv ==> equiv ==> eq) as bmem_beq_var.
-  Proof.
-    unfold bmem. intros. rewrite H. rewrite H0. reflexivity.
-  Qed.
-
-  Add Parametric Morphism : mem with signature (equiv ==> equiv ==> eq) as mem_beq_var.
-  Proof.
-    unfold mem; intros; rewrite H; rewrite H0; reflexivity.
-  Qed.
-
-*)
 
   Add Parametric Morphism : lookup with signature (equiv ==> eq ==> eq) as Lookup_beq_var.
   Proof.
@@ -118,23 +75,16 @@ Module ENV (Import Value : VALUE).
     symmetry in H; contradiction. rewrite <- yv in xv; contradiction.
   Qed.
 
-  Add Parametric Morphism : bmem with signature (equiv ==> eq ==> eq) as bmem_beq_var.
-  Proof.
-    unfold bmem. intros. rewrite H. reflexivity.
-  Qed.
-
   Add Parametric Morphism : mem with signature (equiv ==> eq ==> eq) as mem_beq_var.
   Proof.
-    unfold mem; intros; rewrite H; reflexivity.
+    unfold mem. intros. rewrite H. reflexivity.
   Qed.
-
-
 
 
   Fixpoint disjoint (e1 e2 : env) : bool :=
     match e1 with
       | mtEnv => true
-      | bind v _ e1 => negb (bmem v e2) && disjoint e1 e2
+      | bind v _ e1 => negb (mem v e2) && disjoint e1 e2
     end.
 
   (* Juxtposition *)
@@ -157,15 +107,14 @@ Module ENV (Import Value : VALUE).
 (*** Easy Lemmas ***)
 (*******************)
 
-  Lemma mem_mtEnv : forall (v : var), ~ (mem v mtEnv).
-  Proof. intros. unfold mem. simpl. exact (Bool.diff_false_true). Qed.
+  Lemma mem_mtEnv : forall (v : var), mem v mtEnv = false.
+  Proof. intros. unfold mem. simpl. reflexivity. Qed.
 
   Lemma mem_bind : forall (v v' : var) (t : val) (e : env),
-    mem v e -> mem v (bind v' t e).
+    mem v e = true -> mem v (bind v' t e) = true.
   Proof.
     intros.
     unfold mem in H. unfold mem.
-    unfold bmem in H. unfold bmem.
     unfold lookup in H. unfold lookup.
     destruct (beq_var v v').
       reflexivity.
@@ -173,28 +122,16 @@ Module ENV (Import Value : VALUE).
   Qed.
 
   Lemma mem_bind_same : forall (v v' : var) (t : val) (e : env),
-    v == v' -> mem v (bind v' t e).
+    v == v' -> mem v (bind v' t e) = true.
   Proof.
-    intros. unfold mem. rewrite H. unfold bmem. simpl. rewrite beq_var_refl; auto.
+    intros. rewrite H. unfold mem. simpl. rewrite beq_var_refl; auto.
   Qed.
 
   Lemma mem_bind_diff : forall (v v' : var) (t : val) (e : env),
-    v =/= v' -> mem v (bind v' t e) -> mem v e.
+    v =/= v' -> mem v (bind v' t e) = true -> mem v e = true.
   Proof.
-    intros. unfold mem in *. unfold bmem in *. simpl in H0.
+    intros. unfold mem in *. simpl in H0.
     destruct (beq_var v v') eqn:vv'. contradiction. auto.
-  Qed.
-
-  Lemma bmem_true : forall (v : var) (e : env),
-    bmem v e = true -> mem v e.
-  Proof. intros. unfold mem. exact H. Qed.
-
-  Lemma bmem_false : forall (v : var) (e : env),
-    bmem v e = false -> ~ (mem v e).
-  Proof.
-    intros. unfold mem. destruct (bmem v e).
-    inversion H.
-    exact Bool.diff_false_true.
   Qed.
 
   Lemma lookup_bind_eq : forall (v : var) (t : val) (e : env),
@@ -224,11 +161,11 @@ Module ENV (Import Value : VALUE).
   Proof. intros. induction e; auto. Qed.
 
   Lemma disjoint_bind_r : forall v t e1 e2,
-    disjoint (bind v t e1) e2 = negb (bmem v e2) && disjoint e1 e2.
+    disjoint (bind v t e1) e2 = negb (mem v e2) && disjoint e1 e2.
   Proof. auto. Qed.
 
   Lemma disjoint_bind_l : forall e1 v t e2,
-    disjoint e1 (bind v t e2) = negb (bmem v e1) && disjoint e1 e2.
+    disjoint e1 (bind v t e2) = negb (mem v e1) && disjoint e1 e2.
   Proof.
     intros.
     induction e1 as [|v1 t1 e1].
@@ -237,9 +174,9 @@ Module ENV (Import Value : VALUE).
     Case "e1 = bind v1 t1 e1".
       simpl. rewrite IHe1.
       assert (L: forall u v t e,
-        negb (bmem u (bind v t e)) = negb (beq_var u v) && negb (bmem u e)).
+        negb (mem u (bind v t e)) = negb (beq_var u v) && negb (mem u e)).
       intros. rewrite <- negb_orb.
-        unfold bmem, lookup.
+        unfold mem, lookup.
         destruct (beq_var u v0); simpl; reflexivity.
       rewrite L. rewrite L. rewrite beq_var_sym.
       assert (Z: forall a b c d, a && b && (c && d) = a && c && (b && d)).
@@ -259,12 +196,12 @@ Module ENV (Import Value : VALUE).
   Qed.
 
   Lemma disjoint_overlap : forall v e1 e2,
-    mem v e1 -> mem v e2 -> disjoint e1 e2 = false.
+    mem v e1 = true -> mem v e2 = true -> disjoint e1 e2 = false.
   Proof.
     intros. induction e1 as [|v1 t1 e1].
     Case "e1 = mtEnv". inversion H.
     Case "e1 = bind v1 t1 e1". simpl.
-      destruct (bmem v1 e2) eqn:M; try reflexivity. unfold mem in H0.
+      destruct (mem v1 e2) eqn:M; try reflexivity.
       destruct (beq_var_eq_dec v v1).
       SCase "v == v1".
         rewrite H1 in *. rewrite H0 in M. inversion M.
@@ -305,43 +242,56 @@ Module ENV (Import Value : VALUE).
   Lemma concat_mtEnv_r : forall e, e ++ mtEnv = e.
   Proof. intros. induction e; simpl; try rewrite IHe; auto. Qed.
 
-  Lemma lookup_concat_mem : forall v e1 e2,
-    mem v e1 -> lookup v (e1 ++ e2) = lookup v e1.
+  Lemma lookup_concat : forall v e1 e2,
+    lookup v (e1 ++ e2) = if mem v e1 then lookup v e1 else lookup v e2.
   Proof.
-    intros. induction e1 as [|v1 t1 e1].
-    Case "e1 = mtEnv". contradict H. apply mem_mtEnv.
+    intros. generalize dependent e2. induction e1 as [ | v1 t1 e1].
+    Case "e1 = mtEnv".
+      intros. reflexivity.
     Case "e1 = bind v1 t1 e1".
-      simpl. unfold mem, bmem, lookup in H.
-      destruct (beq_var v v1); try auto.
+      intros. simpl.
+      unfold mem, lookup in *.
+      destruct (beq_var v v1); auto.
   Qed.
-  Hint Resolve lookup_concat_mem.
+  Hint Resolve lookup_concat.
 
-  Lemma lookup_concat_not_mem : forall (v : var) (e1 e2 : env),
-    ~ (mem v e1) -> lookup v (e1 ++ e2) = lookup v e2.
-  Proof.
-    intros. generalize dependent e2. induction e1 as [|v1 t1 e1].
-    Case "mtEnv".
-      intros. simpl. reflexivity.
-    Case "bind v1 t1 e1".
-      intros. unfold mem in *. unfold bmem in *. simpl in *.
-      destruct (beq_var v v1).
-      SCase "v == v1". tauto.
-      SCase "v /= v1".
-        apply IHe1. exact H.
-  Qed.
+  Lemma lookup_concat_mem : forall v e1 e2,
+    mem v e1 = true -> lookup v (e1 ++ e2) = lookup v e1.
+  Proof. intros. rewrite lookup_concat. rewrite H. reflexivity. Qed.
+  Hint Resolve lookup_concat_mem.
+  
+  Lemma lookup_concat_not_mem : forall v e1 e2,
+    mem v e1 = false -> lookup v (e1 ++ e2) = lookup v e2.
+  Proof. intros. rewrite lookup_concat. rewrite H. reflexivity. Qed.
   Hint Resolve lookup_concat_not_mem.
 
+  Lemma lookup_union : forall v a b c,
+    a & b = Some c ->
+    lookup v c = if mem v a then lookup v a else lookup v b.
+  Proof.
+    intros. unfold union in H.
+    destruct (disjoint a b); inversion H.
+    rewrite lookup_concat. reflexivity.
+  Qed.
+
   Lemma lookup_not_mem : forall (v : var) (e : env),
-    ~ (mem v e) <-> lookup v e = None.
+    mem v e = false <-> lookup v e = None.
   Proof.
     intros; split. intros.
-    destruct (lookup v e) eqn:ve; auto. unfold mem in H. unfold bmem in H.
-    rewrite ve in H. tauto.
-    intro; intro. unfold mem, bmem in H0.
-    destruct (lookup v e). inversion H. inversion H0.
+    destruct (lookup v e) eqn:ve; auto. unfold mem in H. unfold mem in H.
+    rewrite ve in H. discriminate H.
+    intro. unfold mem.
+    destruct (lookup v e); [inversion H | reflexivity].
   Qed.
   Hint Resolve lookup_not_mem.
 
+  Lemma lookup_mem : forall (v : var) (a : env),
+    mem v a = true <-> exists b, lookup v a = Some b.
+  Proof.
+    intros. unfold mem. destruct (lookup v a).
+    split; eauto.
+    split; intros; inversion H; discriminate.
+  Qed.
 
 (********************)
 (*** Union Lemmas ***)
@@ -359,17 +309,11 @@ Module ENV (Import Value : VALUE).
   Qed.
 
   Lemma union_overlap : forall (e1 e2 : env) (v : var),
-    mem v e1 -> mem v e2 -> e1 & e2 = None.
+    mem v e1 = true -> mem v e2 = true -> e1 & e2 = None.
   Proof.
     intros. apply disjoint_false.
     apply disjoint_overlap with (v:=v); auto.
   Qed.
-
-  Ltac elim_bmems :=
-    repeat match goal with
-             | [ H : bmem _ _ = true |- _ ]  => apply bmem_true in H
-             | [ H : bmem _ _ = false |- _ ] => apply bmem_false in H
-           end.
   
   Lemma env_comm : forall (e1 e2 e12 : env),
     disjoint e1 e2 = true -> forall v, lookup v (e1 ++ e2) = lookup v (e2 ++ e1).
@@ -381,7 +325,7 @@ Module ENV (Import Value : VALUE).
     apply disjoint_true in D12. apply disjoint_true in D21.
     destruct (e2 & e1) as [e21|] eqn:E21; try inversion D21.
     (* Prove e1 ++ e2 == e2 ++ e1 *)
-    destruct (bmem v e1) eqn:M1; destruct (bmem v e2) eqn:M2; elim_bmems.
+    destruct (mem v e1) eqn:M1; destruct (mem v e2) eqn:M2.
     Case "v in e1, e2".
       assert (C: disjoint e1 e2 = false).
         apply disjoint_overlap with (v:=v); auto.
@@ -421,54 +365,51 @@ Module ENV (Import Value : VALUE).
       rewrite D12 in H; inversion H; assumption.
   Qed.
 
-(*
-  Lemma env_comm : forall (e1 e2 e12 : env),
-    disjoint e1 e2 = true -> e1 ++ e2 == e2 ++ e1.
-  Proof.
-    intros. rename H into D12.
-    assert (D21: disjoint e2 e1 = true) by
-      (rewrite disjoint_sym; assumption).
-    assert (D12' := D12).
-    apply disjoint_true in D12. apply disjoint_true in D21.
-    destruct (e2 & e1) as [e21|] eqn:E21; try inversion D21.
-    (* Prove e1 ++ e2 == e2 ++ e1 *)
-    intro.
-    destruct (bmem v e1) eqn:M1; destruct (bmem v e2) eqn:M2; elim_bmems.
-    Case "v in e1, e2".
-      assert (C: disjoint e1 e2 = false).
-        apply disjoint_overlap with (v:=v); auto.
-      rewrite D12' in C; inversion C.
-    Case "v in e1, not in e2".
-      assert (L1: lookup v (e1 ++ e2) = lookup v e1) by auto.
-      assert (L2: lookup v (e2 ++ e1) = lookup v e1) by auto.
-      rewrite L1; rewrite L2; reflexivity.
-    Case "v in e2, not in e1".
-      assert (L1: lookup v (e1 ++ e2) = lookup v e2) by auto.
-      assert (L2: lookup v (e2 ++ e1) = lookup v e2) by auto.
-      rewrite L1; rewrite L2; reflexivity.
-    Case "v not in e1, e2".
-      assert (L12: lookup v (e1 ++ e2) = lookup v e2) by auto.
-      assert (L21: lookup v (e2 ++ e1) = lookup v e1) by auto.
-      assert (L1: lookup v e1 = None) by (apply lookup_not_mem; auto).
-      assert (L2: lookup v e2 = None) by (apply lookup_not_mem; auto).
-      rewrite L12, L21, L1, L2. reflexivity.
-  Qed.
+(* Compose *)
 
-  (* needed? *)
-  Lemma env_comm2 : forall (e1 e2 e12 : env),
-    e1 & e2 = Some e12 -> exists e21, e2 & e1 = Some e21 /\ e12 == e21.
+
+(* Composition *)
+
+  Lemma lookup__mem : forall v e t,
+    lookup v e = Some t -> mem v e = true.
+  Proof. intros. unfold mem. rewrite H; auto. Qed.
+
+  Lemma not_lookup__not_mem : forall v e,
+    lookup v e = None -> mem v e = false.
+  Proof. intros. unfold mem. rewrite H; auto. Qed.
+
+  Lemma union_mem : forall v a b c,
+    a & b = Some c ->
+    mem v c = true -> mem v a = true \/ mem v b = true.
   Proof.
     intros.
-    assert (D12: disjoint e1 e2 = true) by
-      (apply disjoint_iff; exists e12; assumption).
-    assert (D21: disjoint e2 e1 = true) by
-      (rewrite disjoint_sym; assumption).
-    assert (G: e1 ++ e2 == e2 ++ e1) by
-      (apply env_comm in D12; assumption).
-    exists (e2 ++ e1). split.
-      apply disjoint_true in D21; assumption.
-      apply disjoint_true in D12.
-      rewrite D12 in H; inversion H; assumption.
+    repeat (rewrite lookup_mem in *).
+    inversion H0. destruct (lookup v a) as [t|] eqn:L.
+      left. exists t. auto.
+      right. rewrite <- lookup_not_mem in L.
+        rewrite lookup_union with (a:=a) (b:=b) in H1.
+        rewrite L in H1. rewrite H1. eauto. auto.
   Qed.
-*)
+
+  Lemma union_mem_left : forall v a b c,
+    a & b = Some c ->
+    mem v a = true ->
+    lookup v c = lookup v a.
+  Proof.
+    intros. rewrite lookup_union with (a:=a) (b:=b).
+    rewrite H0. reflexivity. assumption.
+  Qed.
+  Hint Resolve union_mem_left.
+
+  Lemma union_mem_right : forall v a b c,
+    a & b = Some c ->
+    mem v b = true ->
+    lookup v c = lookup v b.
+  Proof.
+    intros. rewrite lookup_union with (a:=a) (b:=b); auto.
+    destruct (mem v a) eqn:D; auto.
+    rewrite union_overlap with (v:=v) in H; inversion H; auto.
+  Qed.
+  Hint Resolve union_mem_right.
+
 End ENV.

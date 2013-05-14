@@ -9,6 +9,28 @@ Definition applyOpt {a b : Type} (f : a -> option b) (x : option a) : option b :
 Notation "x <- y ; z" := (applyOpt (fun x => z) y)
   (at level 65, right associativity).
 
+  
+Ltac break_ands :=
+  repeat match goal with 
+    | [ H : _ /\ _ |- _ ] => inversion H; clear H
+  end.
+
+Ltac simpl_impls := 
+  repeat match goal with
+    | [ Imp : ?cond -> ?exp, Given : ?cond |- _ ] => 
+      let H' := fresh "H" in 
+        ((assert exp as H' by (apply Imp; exact Given)); try clear Imp)
+    | [ Given : ?cond, Imp : ?cond -> ?exp |- _ ] => 
+      let H' := fresh "H" in 
+        ((assert exp as H' by (apply Imp; exact Given)); try clear Imp)
+  end.
+
+Ltac break_exists :=
+  repeat match goal with
+    | [ H : exists x, _ |- _] => elim H; intros; clear H
+  end.
+
+
 Definition composeOpt {a b c : Type}
   (f : a -> option b) (g : b -> option c) : a -> option c :=
   fun x : a =>
