@@ -43,7 +43,7 @@
   (define-syntax-rule (make-pattern t)
     (sexpr->pattern 't (all-macro-literals) (all-macro-names) (list)))
   
-  ; macro-aware-step :: Language t c -> pattern -> c -> list (cons t c)
+  ; macro-aware-step :: Language t c -> pattern -> c -> list (cons pattern c)
   (define (macro-aware-step lang p ctx [debug #f])
     (let [[term->pattern (language-term->pattern lang)]
           [pattern->term (language-pattern->term lang)]

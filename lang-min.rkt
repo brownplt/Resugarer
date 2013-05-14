@@ -56,14 +56,8 @@
   [(subs x_1 e_1 (lambda o x_2 e_2))
    ,(term-let ([x_new (variable-not-in (term e_1) (term x_2))])
               (term (lambda o x_new (subs x_1 e_1 (swap x_2 x_new e_2)))))]
-  ; ???
   [(subs x_1 e_1 (set! o x_2 e_2))
    (set! o (subs x_1 e_1 x_2) (subs x_1 e_1 e_2))]
-;  [(subs x_1 e_1 (set! o x_1 e_2))
-;   (set! o x_1 e_2)]
-;  [(subs x_1 e_1 (set! o x_2 e_2))
-;   ,(term-let [[x_new (variable-not-in (term e1) (term x_2))]]
-;              (term (set! o x_new (subs x_1 e_1 (swap x_2 x_new e_2)))))]
   [(subs x_1 e_1 (rec o x_2 e_2))
    ,(term-let ([x_new (variable-not-in (term e_1) (term x_2))])
               (term (rec o x_new (subs x_1 e_1 (swap x_2 x_new e_2)))))]  
@@ -113,10 +107,6 @@
    (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(eq? (term v_1) (term v_2))))
    (--> (in-hole pc (first o_1 (cons o_2 v_1 v_2))) (in-hole pc v_1))
    (--> (in-hole pc (rest o_1 (cons o_2 v_1 v_2)))  (in-hole pc v_2))
-   
-;   (--> (in-hole pc_1 (+ o number ...))
-;        (in-hole pc_1 (sum number ...))
-;        "plus")
    
    (--> (top s (in-hole ec x))
         (top s (in-hole ec (look x s)))
@@ -210,7 +200,7 @@
               '((top (store) 3)))
 
 (define-syntax-rule (test-trace t)
-  (macro-aware-traces MAMin (make-term t)))
+  (macro-aware-traces MAMin marred (make-term t)))
 
 (require "macro.rkt")
 (require "pattern.rkt")
@@ -269,9 +259,6 @@
   [(cond [^ else x])    x]
   [(cond [^ x y])       (if x y (+ 0 0))]
   [(cond [^ x y] z ...) (if x y (cond z ...))])
-;  [(cond) 0]
-;  [(cond [^ x y] xs ...) (if x y (cond xs ...))]
-;  [(cond [^ else x]) x])
 
 ;(define-macro std-letrecs () (let lets thunk force)
 ;  [(std-letrec [^ [^ var init] ...] body)
@@ -404,5 +391,6 @@
 ;                     (apply x y)))
 ;(test-trace (cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ else (+ 5 6)]))
 (test-trace (+ 1 (cond (^ (eq? 1 2) (+ 1 2)) (^ (eq? 1 3) (+ 3 4)))))
+(test-trace (lets [^ [^ x (+ 1 1)] [^ y (+ 1 2)]] (+ x y)))
 ;(test-trace (letrec x x (+ x x)))
 ;(test-trace (letrecs [^ [^ x (lambda z x)] [^ y (lambda z y)]] (apply x y)))

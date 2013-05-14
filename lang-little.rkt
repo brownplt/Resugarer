@@ -14,20 +14,21 @@
   ;;;;;;;;;;;;;;;;
 
 
-(define-macro-aware-language Mirror
-  [e (apply e ...)
-     (+ e ...)
-     (if0 e e e)
-     (rec x e)
+(define-language Mirror
+  [e (apply o e ...)
+     (+ o e ...)
+     (if0 o e e e)
+     (rec o x e)
      x
      v]
-  [v (λ x e)
+  [v (λ o x e)
      number]
-  [E (apply v ... E e ...)
-     (if0 E e e)
-     (+ v ... E e ...)
+  [E (apply o v ... E e ...)
+     (if0 o E e e)
+     (+ o v ... E e ...)
      hole]
-  [x variable-not-otherwise-mentioned])
+  [x variable-not-otherwise-mentioned]
+  [o (origins any)])
 
 (define-metafunction Mirror
   swap : x x any -> any

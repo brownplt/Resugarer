@@ -61,4 +61,7 @@
   ; shows : list<any> -> string
   (define (shows xs) (string-join (map show xs) " "))
   
+  ; debug : format-str format-arg ... -> void
+  (define-syntax-rule (debug str arg ...)
+    (display (format str arg ...)))
 )

@@ -99,9 +99,10 @@
           [join (redex-language-join l)]
           [pattern->term (language-pattern->term l)]
           [term->pattern (language-term->pattern l)]]
+      (display (format "~a\n" (show-term (car (split t)))))
     (let [[ps (macro-aware-step
                l
-               (term->pattern (car (split t)))
+               (unexpand (term->pattern (car (split t))))
                (cdr (split t)))]]
       (if (empty? ps) #f
           (join (pattern->term (expand (caar ps))) (cdar ps))))))
@@ -111,23 +112,35 @@
   (define (format-term-for-traces l t)
     (let [[term->pattern (language-term->pattern l)]
           [split (redex-language-split l)]]
-      (let [[u (unexpand (term->pattern (car (split t))))]]
-        (if (not u) (hidden) (pattern->sexpr u)))))
+      (if (not t) "END"
+          (let [[u (unexpand (term->pattern (car (split t))))]]
+            (if (not u) (hidden) (pattern->sexpr u))))))
   
   (define (filter-term-for-traces l t)
     (let [[term->pattern (language-term->pattern l)]
           [split (redex-language-split l)]]
       (display (format "~a\n\n" (term->pattern (car (split t)))))
       (unexpand (term->pattern (car (split t))))))
-
-  (define (macro-aware-traces l t)
-    (traces (redex-language-red l) t ; (test-trace p)
-          #:pp (lambda (t a b c)
-                 (default-pretty-printer (format-term-for-traces l t)
-                   a b c))
-          #:filter (lambda (t _) #t)))
-;                     (filter-term-for-traces l t))))
   
+  (define (format-term-for-traces2 l t)
+    (let [[term->pattern (language-term->pattern l)]
+          [split (redex-language-split l)]]
+      (pattern->sexpr (unexpand (term->pattern (car (split t)))))))
+
+  (define-syntax-rule
+    (macro-aware-traces l red t rest ...)
+    (traces red t
+            #:pp (lambda (t a b c)
+                   (default-pretty-printer (format-term-for-traces l t)
+                     a b c))
+            rest ...))
+;  (define (macro-aware-traces l red t)
+;    (traces red t
+;          #:pp (lambda (t a b c)
+;                 (default-pretty-printer (format-term-for-traces l t)
+;                   a b c))))
+  
+  #|
   (define-syntax (define-macro-aware-language stx)
     (syntax-case stx ()
       [(_ lang-name defn ...)
@@ -142,20 +155,7 @@
                         (datum->syntax stx
                           (insert-origin 'o (syntax->datum #'(defn ...))))]]
            #'(define-language lang-name defn* ...)))]))
-  
-  #|
-  (define-syntax (macro-aware-reduction-relation stx)
-    (syntax-case stx ()
-      (syntax-case stx ()
-        [(_ lang 
-  
-  (define-syntax (define-macro-aware-metafunction stx)
-    (syntax-case stx ()
-      [(_ lang fun part ...)
-       (let* [[i 0]
-              [insert-origin (λ (o x))
-                (if (
-|#
+  |#
   
   ; TODO: test cases
   
