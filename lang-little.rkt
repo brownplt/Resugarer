@@ -130,7 +130,7 @@
 
 
 (define MAMirror
-  (redex-language "Mirror" Mirror red (λ (x y) x) (λ (x) (cons x 'nuthin))))
+  (make-redex-language "Mirror" Mirror red (λ (x y) x) (λ (x) (cons x 'nuthin))))
 
 (define-syntax-rule (test-eval t)
   (macro-aware-eval MAMirror (make-pattern t) 'nuthin #t))

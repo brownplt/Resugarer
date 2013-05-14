@@ -6,7 +6,7 @@
   (provide
    define-macro
    make-pattern
-   language
+   language language-name language-pattern->term language-term->pattern language-step language-show-term
    macro-aware-step
    macro-aware-eval)
   

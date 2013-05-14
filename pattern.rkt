@@ -1,6 +1,6 @@
 (module pattern-untyped racket
   (provide
-   sexpr->pattern
+   sexpr->pattern pattern->sexpr
    unify minus substitute
    attempt-unification unification-failure?
    add-global-literals! is-macro-literal? all-macro-literals nominal?
@@ -98,11 +98,11 @@
       (match t
         [(t-macro m) (format "~a " m)]
         [(t-syntax)    (if abbreviated "" "^ ")]
-        [(t-apply)   ""]
-        [_             "[Not a type!]"])) ; !!!
+        [(t-apply)   ""]))
+;        [_             "[Not a type!]"])) ; !!!
     (let ((show-pattern (λ (x) (show-pattern x abbreviated))))
       (match x
-        [(tag t _)           (format "#~a" (show-pattern t))]
+        [(tag x _)           (format "#~a" (show-pattern x))]
         [(pvar v)            (symbol->string v)]
         [(literal x)         (format ":~a" (symbol->string x))]
         [(constant x)        (if abbreviated
@@ -123,6 +123,23 @@
                                               (map show-pattern r))
                                       " "))])))
   
+  (define (pattern->sexpr x)
+    (define (type->sexprs t)
+      (match t
+        [(t-macro m) (list m)]
+        [_ (list)]))
+    (match x
+      [(tag x _)           (pattern->sexpr x)]
+      [(pvar v)            v]
+      [(literal x)         x]
+      [(constant x)        x]
+      [(plist t elems)     (append (type->sexprs t)
+                                   (map pattern->sexpr elems))]
+      [(ellipsis t l m r)  (append (type->sexprs t)
+                                   (map pattern->sexpr l)
+                                   (list (pattern->sexpr m)
+                                         "...")
+                                   (map pattern->sexpr r))]))
   
   ;;;;;;;;;;;;
   ;; Syntax ;;
