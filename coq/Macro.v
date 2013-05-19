@@ -1,16 +1,21 @@
-Require Import Term.
-Require Import Subs.
-Require Import Match.
+Require Import Cases.
+Require Import Term2.
+Require Import Subs2.
+Require Import Match2.
 Require Import Coq.Classes.RelationClasses.
 Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
 Import StdEnv.
 
+(* TODO: Relax to say (fvar v q -> fvar v p). *)
+Definition same_fvars (p q : term) :=
+  forall v, fvar v p = fvar v q.
+
 Inductive simple_macro :=
-| smacro : term -> term -> simple_macro.
+| smacro (p q : term) : wf p = true -> wf q = true -> same_fvars p q -> simple_macro.
 
 Fixpoint sexpand m t : option term :=
   match m with
-    | smacro p q =>
+    | smacro p q _ _ _ =>
       match t / p with
         | None => None
         | Some e => Some (e * q)
@@ -19,7 +24,7 @@ Fixpoint sexpand m t : option term :=
 
 Fixpoint sunexpand m s t : option term :=
   match m with
-    | smacro p q =>
+    | smacro p q _ _ _ =>
       match t / q with
         | None => None
         | Some e1 =>
@@ -30,24 +35,97 @@ Fixpoint sunexpand m s t : option term :=
       end
   end.
 
-(* Unproven! *)
-
-Lemma simple_lens : forall m t t',
+Lemma simple_lens_1 : forall m t t',
   closed t ->
   sexpand m t = Some t' ->
   sunexpand m t t' = Some t.
 Proof.
-  intros. destruct m as [p q].
-  simpl in *. destruct (t / p) as [t_p|] eqn:TP; inversion_clear H0.
+  intros m t t' C H.
+  destruct m as [p q WFp WFq FV].
+  simpl in *. destruct (t / p) as [t_p|] eqn:TP; inversion_clear H.
   destruct (t_p * q / q) eqn:TPQ.
-  assert (E: e == t_p).
-    apply subs_tmatch_eq in TPQ. symmetry; assumption.
-    admit. (* fvars! *)
-  assert (EP: e * p = t).
-    rewrite E. apply tmatch_subs_eq. assumption.
-  rewrite EP. f_equal. apply closed_subs; assumption.
-  admit. (* well-formedness! *)
+  Case "Prove the equivalence".
+    assert (E1: e == t_p).
+      symmetry. apply subs_tmatch_eq with (p:=q).
+      intros. rewrite <- fvar_mem with (p:=t) (q:=p) in H; try assumption.
+      rewrite FV in H. exact H.
+      assumption.
+    assert (E2: t_p * p = t).
+      apply tmatch_subs_eq; assumption.
+    assert (E3: t_p * t = t).
+      apply closed_subs; assumption.
+    rewrite E1. rewrite E2. rewrite E3. reflexivity.
+  Case "Contradiction : t_p * q / q exists".
+    rewrite wf_tmatch_iff in WFq. inversion WFq.
+    rewrite H in TPQ. discriminate TPQ.
 Qed.
+
+Lemma beq_var_false : forall u v,
+  beq_var u v = false -> u =/= v.
+Proof.
+  intros u v H C.
+  simpl in C. unfold beq_var_eq in C. unfold VarImpl.beq_var in C.
+  rewrite H in C. discriminate C.
+Qed.
+
+Lemma mem_compose : forall v a b,
+  mem v (compose a b) = true -> mem v a = true \/ mem v b = true.
+Proof.
+  intros.
+  induction b; auto.
+  destruct (beq_var v v0) eqn:EQ.
+  Case "v == v0".
+    rewrite mem_bind_same. right; reflexivity. apply EQ.
+  Case "v =/= v0".
+    simpl in H. apply mem_bind_diff in H.
+    SCase "Main proof".
+      apply IHb in H. inversion H.
+      SSCase "v in a".
+        left; assumption.
+      SSCase "v in b".
+        right. apply mem_bind_diff with (v':=v0) (t:=v1).
+          apply beq_var_false; assumption.
+        rewrite mem_bind; auto. rewrite mem_bind; auto.
+    SCase "Side condition".
+      apply beq_var_false; assumption.
+Qed.
+
+Lemma simple_lens_2 : forall m s t t',
+  closed t ->
+  sunexpand m s t = Some t' ->
+  sexpand m t' = Some t.
+Proof.
+  intros m s t t' C H.
+  destruct m as [p q WFp WFq FV].
+  simpl in *. destruct (t / q) as [t_q|] eqn:TQ; try discriminate.
+  destruct (s / p) as [s_p|] eqn:SP; try discriminate.
+  destruct (t' / p) eqn:TP.
+  Case "Prove the equivalence".
+    inversion H as [T'].
+    rewrite compose_subs_eq in T'.
+    rewrite <- T' in TP.
+    apply subs_tmatch_eq in TP.
+    rewrite <- TP.
+    rewrite <- compose_subs_eq.
+    assert (E1: t_q * q = t).
+      apply tmatch_subs_eq; assumption.
+    assert (E2: s_p * t = t).
+      apply closed_subs; assumption.
+    rewrite E1, E2. reflexivity.
+    SCase "FV condition".
+      intros v M. apply mem_compose in M. inversion M.
+        erewrite fvar_mem; eauto.
+        rewrite FV. erewrite fvar_mem; eauto.
+  Case "Contradiction : t' / p exists".
+    inversion H as [T'].
+    rewrite compose_subs_eq in T'.
+    rewrite <- T' in TP.
+    apply wf__tmatch with (a := compose s_p t_q) in WFp.
+    inversion WFp. rewrite H0 in TP. discriminate TP.
+Qed.
+
+
+
 
 (* Scrap *)
 

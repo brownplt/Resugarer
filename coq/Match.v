@@ -1,4 +1,4 @@
-Require Import Coq.Bool.Bool.
+oRequire Import Coq.Bool.Bool.
 Require Import Coq.Arith.EqNat.
 Require Import Coq.Lists.List.
 Require Import Coq.Classes.RelationClasses.
