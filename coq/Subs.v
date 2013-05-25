@@ -23,29 +23,31 @@ End VarImpl.
 Module StdEnv := ENV(ValueImpl)(VarImpl).
 Import StdEnv.
 
-Definition try_lookup (v : var) (e : env) : term :=
-  match lookup v e with
+Definition try_lookup v a :=
+  match lookup v a with
     | None => tvar v
-    | Some t => t
+    | Some p => p
   end.
 
-Fixpoint subs (e : env) (t : term) : term :=
-  match t with
-    | tvar v => try_lookup v e
-    | node n ts => node n (map (subs e) ts)
+Fixpoint subs a p : term :=
+  match p with
+    | tvar v => try_lookup v a
+    | const c => const c
+    | empty => empty
+    | p :: ps => (subs a p) :: (subs a ps)
   end.
 
-Notation "e * p" := (subs e p).
+Notation "a * p" := (subs a p).
 
-Definition env_eqv (e1 e2 : env) :=
-  forall (v : var), try_lookup v e1 = try_lookup v e2.
+Definition env_eqv a b :=
+  forall (v : var), try_lookup v a = try_lookup v b.
 
 
-Lemma env_eqv_refl : forall e, env_eqv e e. 
+Lemma env_eqv_refl : forall a, env_eqv a a.
 Proof. unfold env_eqv. reflexivity. Qed.
-Lemma env_eqv_sym : forall e f, env_eqv e f -> env_eqv f e.
+Lemma env_eqv_sym : forall a b, env_eqv a b -> env_eqv b a.
 Proof. unfold env_eqv. intros. symmetry; auto. Qed.
-Lemma env_eqv_trans : forall e f g, env_eqv e f -> env_eqv f g -> env_eqv e g.
+Lemma env_eqv_trans : forall a b c, env_eqv a b -> env_eqv b c -> env_eqv a c.
 Proof. unfold env_eqv. intros. rewrite H; auto. Qed.
 
 Add Relation env env_eqv
@@ -58,55 +60,49 @@ Instance env_eqv_Setoid : Setoid env :=
   {equiv := env_eqv; setoid_equiv := Env_eqv}.
 
 
-Lemma lookup_eqv : forall (v : var) (e1 e2 : env),
-  lookup v e1 = lookup v e2 -> try_lookup v e1 = try_lookup v e2.
+Lemma lookup_eqv : forall v a b,
+  lookup v a = lookup v b -> try_lookup v a = try_lookup v b.
 Proof.
   intros. unfold try_lookup. rewrite H. reflexivity.
 Qed.
 Hint Resolve lookup_eqv.
 
-Lemma env_eqv_subs : forall (e1 e2 : env) (t : term),
-  e1 == e2 -> e1 * t = e2 * t.
+Lemma env_eqv_subs : forall a b p,
+  a == b -> a * p = b * p.
 Proof.
-  intros. induction t.
+  intros. induction p; auto.
   Case "var v". simpl. unfold env_eqv in H.
     rewrite H. reflexivity.
-  Case "node n nil". reflexivity.
-  Case "node n (t :: ts)". simpl. rewrite IHt.
-  inversion IHt0. rewrite H1. reflexivity.
+  Case "p1 :: p2".
+    simpl. rewrite IHp1. rewrite IHp2. reflexivity.
 Qed.
 
-Lemma subs_mtEnv : forall (t : term), mtEnv * t = t.
+Lemma subs_mtEnv : forall p, mtEnv * p = p.
 Proof.
-  intros. induction t; try reflexivity.
-  Case "node n (t :: ts)". inversion IHt0.
-    simpl. rewrite IHt. rewrite H0. rewrite H0. reflexivity.
+  intros. induction p; try reflexivity.
+  Case "p1 :: p2".
+    simpl. rewrite IHp1. rewrite IHp2. reflexivity.
 Qed.
 
-Lemma subs_cons : forall e n t ts,
-  e * node n (t :: ts) = node n (e * t :: map (subs e) ts).
-Proof. auto. Qed.
-
-Lemma try_lookup_not_mem : forall (v : var) (e : env),
-  mem v e = false -> try_lookup v e = tvar v.
+Lemma try_lookup_not_mem : forall v a,
+  mem v a = false -> try_lookup v a = tvar v.
 Proof.
-  intros. assert (G : lookup v e = None).
+  intros. assert (G : lookup v a = None).
     apply lookup_not_mem. exact H.
   unfold try_lookup. rewrite G. reflexivity.
 Qed.
 Hint Resolve try_lookup_not_mem.
 
-
-Fixpoint compose (e1 e2 : env) : env :=
-  match e2 with
-    | mtEnv => e1
-    | bind v t e2 => bind v (e1 * t) (compose e1 e2)
+Fixpoint compose (a b : env) : env :=
+  match b with
+    | mtEnv => a
+    | bind v t b => bind v (a * t) (compose a b)
   end.
 
-Lemma compose_mtEnv_l : forall e, compose mtEnv e = e.
+Lemma compose_mtEnv_l : forall a, compose mtEnv a = a.
 Proof.
-  intros. induction e; try reflexivity.
-  simpl. rewrite IHe. rewrite subs_mtEnv. reflexivity.
+  intros. induction a; try reflexivity.
+  simpl. rewrite IHa. rewrite subs_mtEnv. reflexivity.
 Qed.
 
 Add Parametric Morphism : subs with signature (equiv ==> eq ==> eq) as Subs_morph.
@@ -114,37 +110,33 @@ Proof.
   intros. apply env_eqv_subs. assumption.
 Qed.
 
-Lemma compose_subs_eq : forall e1 e2 t,
-  e1 * (e2 * t) = (compose e1 e2) * t.
+Lemma compose_subs_eq : forall a b p,
+  a * (b * p) = (compose a b) * p.
 Proof.
   intros.
-  induction t.
+  induction p; auto.
   Case "t = var v".
-    simpl. induction e2 as [|v2 t2 e2].
-    SCase "e2 = mtEnv".
+    simpl. induction b as [|v2 p2 b].
+    SCase "b = mtEnv".
       reflexivity.
-    SCase "e2 = bind v2 t2 e2".
+    SCase "b = bind v2 p2 b".
       simpl. unfold try_lookup, lookup.
       destruct (VarImpl.beq_var v v2); auto.
-  Case "t = node nil".
-    reflexivity.
-  Case "t = node n (t::ts)".
-    simpl in *. rewrite IHt. inversion IHt0.
-    rewrite H0. reflexivity.
+  Case "t = p1 :: p2".
+    simpl. rewrite IHp1, IHp2. reflexivity.
 Qed.
 
 Lemma subs_lookup_eqv : forall a b,
-  a == b <-> forall t, a * t = b * t.
+  a == b <-> forall p, a * p = b * p.
 Proof.
   intros. simpl. unfold env_eqv.
   split; intros.
   Case "a == b -> at = bt".
-    induction t; auto.
+    induction p; auto.
     SCase "t = tvar v".
       simpl. apply H.
-    SCase "t = node n (t::ts)".
-      simpl. rewrite IHt. simpl in IHt0. inversion IHt0. rewrite H1.
-      reflexivity.
+    SCase "t = p1 :: p2".
+      simpl. rewrite IHp1, IHp2. reflexivity.
   Case "at = bt -> a == b".
     specialize H with (tvar v). simpl in H. exact H.
-  Qed.
+Qed.

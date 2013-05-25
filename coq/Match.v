@@ -1,4 +1,4 @@
-oRequire Import Coq.Bool.Bool.
+Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.EqNat.
 Require Import Coq.Lists.List.
 Require Import Coq.Classes.RelationClasses.
@@ -9,403 +9,559 @@ Require Import Env.
 Require Import Term.
 Require Import Subs.
 
-  Import StdEnv.
+Import StdEnv.
 
-  Fixpoint tmatch (q p : term) {struct q} : option env :=
-    let tmatches := fix tmatches (ps qs : list term) {struct qs} : option env :=
-      match (ps, qs) with
-        | (nil, nil) => Some mtEnv
-        | (nil, _) => None
-        | (_, nil) => None
-        | (p :: ps, q :: qs) =>
-          e1 <- tmatch q p;
-          e2 <- tmatches ps qs;
-          e1 & e2
-      end in
-    match q with
-      | tvar v => Some (bind v p mtEnv)
-      | node n qs =>
-        match p with
-          | tvar _ => None
-          | node n' ps =>
-            if negb (beq_id n n')
-              then None
-              else tmatches ps qs
-          end
-    end.
+Fixpoint tmatch (q p : term) {struct q} : option env :=
+  match (q, p) with
+    | (tvar v, _)            => Some (bind v p mtEnv)
+    | (const c1, const c2)   => if beq_id c1 c2 then Some mtEnv else None
+    | (empty, empty)         => Some mtEnv
+    | (cons q qs, cons p ps) => e1 <- tmatch q p;
+                                e2 <- tmatch qs ps;
+                                e1 & e2
+    | (_, _)                 => None
+  end.
 
-  Notation "p / q" := (tmatch q p).
+Notation "p / q" := (tmatch q p).
 
+Lemma fvar_cons : forall p ps v,
+  fvar v (cons p ps) = fvar v p || fvar v ps.
+Proof.
+  intros. reflexivity.
+Qed.
 
-  Lemma fvar_head : forall (t : term) (ts : list term) (n : id) (v : var),
-    fvar v t = true -> fvar v (node n (t :: ts)) = true.
-  Proof.
-    intros.
-    unfold fvar. apply orb_true_iff. left. fold fvar.
-    assumption.
-  Qed.
+Lemma closed_uncons : forall p ps,
+  closed (cons p ps) -> closed p /\ closed ps.
+Proof.
+  intros. unfold closed in *.
+  split; intros; specialize H with v; rewrite fvar_cons in H;
+    apply orb_false_iff in H; inversion H; assumption.
+Qed.
 
-  Lemma fvar_tail : forall (t : term) (ts : list term) (n : id) (v :var),
-    fvar v (node n ts) = true -> fvar v (node n (t :: ts)) = true.
-  Proof.
-    intros.
-    unfold fvar. apply orb_true_iff. right. fold fvar.
-    induction ts.
-      simpl in H. inversion H.
-      simpl in H. exact H.
-  Qed.
+Lemma closed_subs : forall p a,
+  closed p -> a * p = p.
+Proof.
+  intros. induction p; auto.
+  Case "tvar v".
+    unfold closed in H. specialize (H v).
+    simpl in H. rewrite beq_var_refl in H. inversion H.
+  Case "p = cons p1 p2".
+    simpl. apply closed_uncons in H. inversion H.
+    apply IHp1 in H0. apply IHp2 in H1. rewrite H0. rewrite H1.
+    reflexivity.
+Qed.
 
-  Lemma fvar_uncons : forall v n t ts,
-    fvar v (node n (t :: ts)) = true ->
-    fvar v t = true \/ fvar v (node n ts) = true.
-  Proof.
-    intros. simpl in H.
-    destruct (fvar v t).
-      left; reflexivity.
-      right. simpl in H.
-        destruct (fvar v (node n ts)) eqn:FV.
-          reflexivity.
-          simpl in FV. rewrite H in FV. inversion FV.
-  Qed.
+Lemma subs_cons : forall a p q,
+  a * (cons p q) = cons (a * p) (a * q).
+Proof. reflexivity. Qed.
 
-  Lemma closed_uncons : forall (t : term) (ts : list term) (n : id),
-    closed (node n (t :: ts)) -> closed t /\ closed (node n ts).
-  Proof.
-    intros. split; unfold closed in *;
-      intro v; specialize (H v);
-      unfold fvar in H; fold fvar in H;
-      apply orb_false_elim in H; inversion H; assumption.
-  Qed.
+Lemma tmatch_cons : forall p ps q qs a,
+  cons p ps / cons q qs = Some a ->
+  exists b c,
+    p / q = Some b /\
+    ps / qs = Some c /\
+    b & c = Some a.
+Proof.
+  intros.
+  simpl in H.
+  destruct (p / q) as [b|] eqn:B;
+    destruct (ps / qs) as [c|] eqn:C;
+      simpl in H; try inversion H.
+  exists b, c. auto.
+Qed.
 
-  Lemma closed_subs : forall (t : term) (e : env),
-    closed t -> e * t = t.
-  Proof.
-    intros. induction t.
-    Case "tvar v".
-      unfold closed in H. specialize (H v).
-      simpl in H. rewrite beq_var_refl in H. inversion H.
-    Case "node nil".
-      reflexivity.
-    Case "node (t :: ts)".
-      simpl.
-      apply closed_uncons in H. inversion H.
-      apply IHt in H0. simpl. rewrite H0.
-      apply IHt0 in H1. simpl in H1. inversion H1.
-        rewrite H3. rewrite H3.
-      reflexivity.
-  Qed.
-
-  Lemma subs_nil : forall (e : env) (n : id),
-    e * node n nil = node n nil.
-  Proof. intros. reflexivity. Qed.
-  
-  Lemma subs_cons : forall (e : env) (t : term) (n : id) (ts : list term),
-    e * (node n (t :: ts)) =
-    node n (e * t :: map (subs e) ts).
-  Proof. reflexivity. Qed.
-
-  Lemma tmatch_cons : forall (n : id) (p q : term) (ps qs : list term) (a : env),
-    (node n (p :: ps)) / (node n (q :: qs)) = Some a ->
-    exists (b c : env),
-      (p / q = Some b /\
-      node n ps / node n qs = Some c /\
-      Some a = b & c).
-  Proof.
-    intros.
-    simpl in H. rewrite beq_id_refl in H. simpl in H.
-    destruct (p / q) as [b|].
-    Case "p / q = b".
-      destruct (node n ps / node n qs) as [c|] eqn:G;
-        simpl in G; rewrite beq_id_refl in G; simpl in G.
-      SCase "ps / qs = c".
-        exists b, c.
-        split; split; try reflexivity.
-        rewrite G in H. inversion H.
-        reflexivity.
-      SCase "ps / qs = None".
-        destruct ps eqn:P; destruct qs eqn:Q;
-          try inversion G; try inversion H.
-        rewrite G in H. simpl in H. inversion H.
-    Case "p / q = None".
-      inversion H.
-  Qed.
-
-  Lemma tmatch_ind : forall (P : term -> term -> env -> Prop),
-    (forall p v, P p (tvar v) (bind v p mtEnv)) ->
-    (forall n, P (node n nil) (node n nil) mtEnv) ->
-    (forall n p q ps qs p_q ps_qs e,
-      p / q = Some p_q ->
-      node n ps / node n qs = Some ps_qs ->
-      P p q p_q ->
-      P (node n ps) (node n qs) ps_qs ->
-      p_q & ps_qs = Some e ->
-      P (node n (p :: ps)) (node n (q :: qs)) e) ->
-    forall p q e, p / q = Some e -> P p q e.
-  Proof.
-    intros P Hvar Hnil Hcons p q e. generalize dependent p.
-    generalize dependent e.
-    induction q as [v | n | n q qs]; intros e p H.
-    Case "q = tvar v".
-      inversion H; apply Hvar.
-    Case "q = node n nil".
-      induction p as [v | n' | n' p ps]; try inversion H.
-      SCase "p = node n' nil".
-        destruct (beq_id n n') eqn:N; simpl in H1; inversion H1.
-        apply beq_id_true in N. rewrite N. apply Hnil.
-      SCase "p = node n' (p::ps)".
-        simpl in H. destruct (negb (beq_id n n')); inversion H.
-    Case "q = node n (q::qs)".
-      induction p as [v | n' | n' p ps].
-      SCase "p = tvar v". inversion H.
-      SCase "p = node n' nil".
-        simpl in H. destruct (beq_id n n'); inversion H.
-      SCase "p = node n' (p :: ps)".
-        clear IHp; clear IHp0.
-        destruct (beq_id n n') eqn:N.
-        SSCase "n == n'".
-          apply beq_id_true in N. subst.
-          apply tmatch_cons in H.
-          inversion_clear H as (b & c & (B & C & A)).
-          eapply Hcons; eauto.
-        SSCase "n /= n'".
-          inversion H as [H']; rewrite N in H'; inversion H'.
-  Qed.
-  
-(*
-  Definition mem__fvar_defn v q e := mem v e = true -> fvar v q = true.
-  Lemma mem__fvar : forall v p q e,
-    p / q = Some e -> mem__fvar_defn v q e.
-  Proof.
-    intro v. apply tmatch_ind; unfold mem__fvar_defn; auto.
-    Case "q = tvar v".
-      intros p u M.
-      unfold mem in M. simpl in M.
-      destruct (VarImpl.beq_var v u) eqn:vu; try discriminate.
-      simpl. unfold VarImpl.beq_var in vu. assumption.
-    Case "q = node n q::qs".
-      intros n p q ps qs p_q ps_qs e P_Q PS_QS IHq IHqs E M.
-      simpl. apply union_mem with (a:=p_q) (b:=ps_qs) in M; auto.
-      rewrite orb_true_iff.
-      inversion M; auto.
-  Qed.
-*)
-
-  Definition subs_tmatch_defn (p q : term) (p_q : env) : Prop :=
-    forall v a ap_q t,
-      (a * p) / q = Some ap_q ->
-      lookup v p_q = Some t ->
-      lookup v ap_q = Some (a * t).
-
-  Theorem subs_tmatch_proof : forall p q p_q,
-    p / q = Some p_q -> subs_tmatch_defn p q p_q.
-  Proof.
-    apply tmatch_ind; unfold subs_tmatch_defn.
-    Case "q = tvar v".
-      intros p u v a ap_q t AP_Q T.
-      simpl in *. inversion AP_Q. subst.
-      unfold try_lookup, lookup in *.
-      destruct (VarImpl.beq_var v u); inversion T; auto.
-    Case "q = node n nil".
-      intros n u a ap_q t AP_Q T.
-      inversion T.
-    Case "q = node n qs".
-      intros n p q ps qs p_q ps_qs e P_Q PS_QS IHq IHqs E u a ap_q t AP_Q T.
-      assert (AP_Q' := AP_Q).
-      rewrite subs_cons in AP_Q'. apply tmatch_cons in AP_Q'.
-      inversion_clear AP_Q' as (b & c & B & C & BC).
-      assert (M := T). apply lookup__mem in M.
-      apply union_mem with (a:=p_q) (b:=ps_qs) in M; auto.
-      inversion_clear M as [Mq | Mqs].
-      SCase "u in q".
-        assert (L: lookup u b = Some (a * t)).
-        SSCase "Prove L".
-          apply IHq; auto.
-          apply union_mem_left with (b:=ps_qs) (c:=e) in Mq; auto.
-          rewrite <- Mq; assumption.
-        SSCase "Use L".
-          rewrite <- L.
-          eapply union_mem_left.
-          symmetry; exact BC.
-          eapply lookup__mem. exact L.
-      SCase "u in qs".
-        assert (L: lookup u c = Some (a * t)).
-        SSCase "Prove L".
-          apply IHqs; auto.
-          apply union_mem_right with (a := p_q) (b:=ps_qs) (c:=e) in Mqs; auto.
-          rewrite <- Mqs; assumption.
-        SSCase "Use L".
-          rewrite <- L. eapply union_mem_right.
-          symmetry; exact BC.
-          eapply lookup__mem. exact L.
-  Qed.
-
-  Lemma mem_concat : forall v a b,
-    mem v (a ++ b) = mem v a || mem v b.
-  Proof.
-    intros. induction a; auto.
-    simpl. unfold mem, lookup, VarImpl.beq_var.
-    destruct (beq_var v v0); auto.
-  Qed.
-
-  Definition fvar_mem_defn v q e :=
-    fvar v q = mem v e.
-  Lemma fvar_mem_proof : forall v p q e,
-    p / q = Some e -> fvar_mem_defn v q e.
-  Proof.
-    intro v. apply tmatch_ind; unfold fvar_mem_defn; auto.
-    Case "q = tvar u".
-      intros p u. unfold mem. simpl. unfold VarImpl.beq_var.
-      destruct (beq_var v u); auto.
-    Case "q = node n (q::qs)".
-      intros n p q ps qs p_q ps_qs e P_Q PS_QS IHq IHqs E.
-      simpl. rewrite IHq. simpl in IHqs. rewrite IHqs.
-      unfold union in E. destruct (disjoint p_q ps_qs) eqn:D; try inversion E.
-      symmetry. apply mem_concat.
-  Qed.
-
-  Lemma fvar_mem : forall v p q e,
-    p / q = Some e -> fvar v q = mem v e.
-  Proof.
-    intros. assert (fvar_mem_defn v q e) by
-      (apply fvar_mem_proof with (p:=p); auto).
-    auto.
-  Qed.
-
-  Corollary subs_tmatch : forall p q a p_q ap_q,
+Lemma tmatch_ind : forall (P : term -> term -> env -> Prop),
+  (forall p v, P p (tvar v) (bind v p mtEnv)) ->
+  (forall n, P (const n) (const n) mtEnv) ->
+  (P empty empty mtEnv) ->
+  (forall p ps q qs p_q ps_qs a,
     p / q = Some p_q ->
-    (forall v, mem v a = true -> fvar v q = true) ->
+    ps / qs = Some ps_qs ->
+    P p q p_q ->
+    P ps qs ps_qs ->
+    p_q & ps_qs = Some a ->
+    P (cons p ps) (cons q qs) a) ->
+  forall p q a, p / q = Some a -> P p q a.
+Proof.
+  intros P Hvar Hconst Hempty Hcons p q. generalize dependent p.
+  induction q; intros.
+  Case "q = tvar v".
+    inversion H; apply Hvar.
+  Case "q = const i".
+    destruct p; try inversion H.
+    destruct (beq_id i i0) eqn:I; inversion H1.
+    apply beq_id_true in I. rewrite I. apply Hconst.
+  Case "q = empty".
+    inversion H. destruct p; try discriminate. inversion H1. apply Hempty.
+  Case "q = cons q1 q2".
+    destruct p; try discriminate.
+    apply tmatch_cons in H. inversion H as (b & c & B & C & A).
+    apply Hcons with (p_q:=b) (ps_qs:=c); auto.
+Qed.
+
+Definition subs_tmatch_defn (p q : term) (p_q : env) : Prop :=
+  forall v a ap_q r,
     (a * p) / q = Some ap_q ->
-    ap_q == compose a p_q.
-  Proof.
-    intros p q a p_q ap_q P_Q FV AP_Q.
-    rewrite subs_lookup_eqv; intros t.
-    induction t; auto.
-    SCase "t = tvar v".
-      rewrite <- compose_subs_eq.
-      assert (H: subs_tmatch_defn p q p_q). apply subs_tmatch_proof; auto.
-      unfold subs_tmatch_defn in H.
-      simpl. unfold try_lookup.
-      destruct (lookup v p_q) as [t|] eqn:L.
-      SSCase "(p/q)[v] = Some t".
-        apply H with (v:=v) (t:=t) in AP_Q; auto.
-        rewrite AP_Q. reflexivity.
-      SSCase "(p/q)[v] = None".
-        apply not_lookup__not_mem in L.
-        rewrite <- fvar_mem with (p:=p) (q:=q) in L; auto.
-        rewrite fvar_mem with (p:=a*p) (e:=ap_q) in L; auto.
-        assert (M := L). rewrite lookup_not_mem in M. rewrite M.
-        destruct (mem v a) eqn:MA.
-        SSSCase "v in a".
-          apply FV in MA.
-          rewrite fvar_mem with (p:=a*p) (e:=ap_q) in MA.
-            rewrite MA in L; inversion L.
-          assumption.
-        SSSCase "v not in a".
-          simpl. rewrite try_lookup_not_mem; auto.
-    SCase "t = node n (t::ts)".
-      simpl in *. rewrite IHt. inversion IHt0. rewrite H0. reflexivity.
-  Qed.
+    lookup v p_q = Some r ->
+    lookup v ap_q = Some (a * r).
 
-  Lemma lookup_union_not_mem : forall v a b c,
-    a & b = Some c -> mem v a = false -> lookup v c = lookup v b.
-  Proof.
-    intros.
-    unfold union in H. destruct (disjoint a b); inversion H.
-    rewrite lookup_concat_not_mem; auto.
-  Qed.
+Theorem subs_tmatch_proof : forall p q p_q,
+  p / q = Some p_q -> subs_tmatch_defn p q p_q.
+Proof.
+  apply tmatch_ind; unfold subs_tmatch_defn; try discriminate.
+  Case "q = tvar v".
+    intros p v u a ap_q r AP_Q R.
+    inversion AP_Q.
+    simpl in *. destruct (VarImpl.beq_var u v); inversion R.
+    reflexivity.
+  Case "cons".
+    intros p ps q qs p_q ps_qs e P_Q PS_QS IHq IHqs E u a ap_q r AP_Q R.
+    assert (AP_Q' := AP_Q). apply tmatch_cons in AP_Q'. fold subs in AP_Q'.
+    inversion_clear AP_Q' as (b & c & B & C & BC).
+    assert (M := R). apply lookup__mem in M.
+    apply union_mem with (a:=p_q) (b:=ps_qs) in M; auto.
+    inversion_clear M as [Mq | Mqs].
+    SCase "u in q".
+      assert (L: lookup u b = Some (a * r)).
+      SSCase "Prove L".
+        apply IHq; auto. eapply union_mem_left in Mq; eauto. rewrite <- Mq. auto.
+      SSCase "Use L".
+        rewrite <- L. eapply union_mem_left. exact BC. eapply lookup__mem. exact L.
+    SCase "u in qs".
+      assert (L: lookup u c = Some (a * r)).
+      SSCase "Prove L".
+        apply IHqs; auto. eapply union_mem_right in Mqs; eauto. rewrite <- Mqs. auto.
+      SSCase "Use L".
+        rewrite <- L. eapply union_mem_right. exact BC. eapply lookup__mem. exact L.
+Qed.
+
+Lemma mem_concat : forall v a b,
+  mem v (a ++ b) = mem v a || mem v b.
+Proof.
+  intros. induction a; auto.
+  simpl. unfold mem, lookup, VarImpl.beq_var.
+  destruct (beq_var v v0); auto.
+Qed.
+
+Definition fvar_mem_defn v q e :=
+  fvar v q = mem v e.
+Lemma fvar_mem_proof : forall v p q a,
+  p / q = Some a -> fvar_mem_defn v q a.
+Proof.
+  intro v. apply tmatch_ind; unfold fvar_mem_defn; auto.
+  Case "q = tvar u".
+    intros p u. unfold mem. simpl. unfold VarImpl.beq_var.
+    destruct (beq_var v u); auto.
+  Case "cons".
+    intros p q ps qs p_q ps_qs a P_Q PS_QS IHq IHqs A.
+    simpl. rewrite IHq. rewrite IHqs.
+    unfold union in A. destruct (disjoint p_q ps_qs) eqn:D; try discriminate.
+    inversion A. symmetry. apply mem_concat.
+Qed.
+
+Lemma fvar_mem : forall v p q e,
+  p / q = Some e -> fvar v q = mem v e.
+Proof.
+  intros. assert (fvar_mem_defn v q e) by
+    (apply fvar_mem_proof with (p:=p); auto).
+  auto.
+Qed.
+
+Corollary subs_tmatch : forall p q a p_q ap_q,
+  p / q = Some p_q ->
+  (forall v, mem v a = true -> fvar v q = true) ->
+  (a * p) / q = Some ap_q ->
+  ap_q == compose a p_q.
+Proof.
+  intros p q a p_q ap_q P_Q FV AP_Q.
+  rewrite subs_lookup_eqv; intros r.
+  induction r; auto.
+  SCase "r = tvar v".
+    rewrite <- compose_subs_eq.
+    assert (H: subs_tmatch_defn p q p_q). apply subs_tmatch_proof; auto.
+    unfold subs_tmatch_defn in H.
+    simpl. unfold try_lookup.
+    destruct (lookup v p_q) as [r|] eqn:L.
+    SSCase "(p/q)[v] = Some r".
+      apply H with (v:=v) (r:=r) in AP_Q; auto.
+      rewrite AP_Q. reflexivity.
+    SSCase "(p/q)[v] = None".
+      apply not_lookup__not_mem in L.
+      rewrite <- fvar_mem with (p:=p) (q:=q) in L; auto.
+      rewrite fvar_mem with (p:=a*p) (e:=ap_q) in L; auto.
+      assert (M := L). rewrite lookup_not_mem in M. rewrite M.
+      destruct (mem v a) eqn:MA.
+      SSSCase "v in a".
+        apply FV in MA.
+        rewrite fvar_mem with (p:=a*p) (e:=ap_q) in MA.
+          rewrite MA in L; inversion L.
+        assumption.
+      SSSCase "v not in a".
+        simpl. rewrite try_lookup_not_mem; auto.
+  SCase "r = cons r1 r2".
+    simpl. rewrite IHr1. rewrite IHr2. reflexivity.
+Qed.
+
+Lemma lookup_union_not_mem : forall v a b c,
+  a & b = Some c -> mem v a = false -> lookup v c = lookup v b.
+Proof.
+  intros.
+  unfold union in H. destruct (disjoint a b); inversion H.
+  rewrite lookup_concat_not_mem; auto.
+Qed.
   
-  Lemma lookup_union_mem : forall v a b c,
-    a & b = Some c -> mem v a = true -> lookup v c = lookup v a.
-  Proof.
-    intros.
-    unfold union in H. destruct (disjoint a b); inversion H.
-    rewrite lookup_concat_mem; auto.
-  Qed.
+Lemma lookup_union_mem : forall v a b c,
+  a & b = Some c -> mem v a = true -> lookup v c = lookup v a.
+Proof.
+  intros.
+  unfold union in H. destruct (disjoint a b); inversion H.
+  rewrite lookup_concat_mem; auto.
+Qed.
 
-  Lemma tmatch_eq :
-    forall p e, p / p = Some e -> e == mtEnv.
-  Proof.
-    induction p; intros.
-    Case "p = tvar v".
-      inversion H. simpl.
-      intros u. unfold try_lookup, lookup, VarImpl.beq_var.
-      destruct (beq_var u v) eqn:uv; auto. apply beq_var_true in uv. auto.
-    Case "p = node n nil".
-      inversion H. rewrite beq_id_refl in H1. inversion H1. reflexivity.
-    Case "p = node n (p::ps)". rename IHp0 into IHps.
-      apply tmatch_cons in H. inversion_clear H as (b & c & B & C & E).
-      apply IHp in B. apply IHps in C.
-      intro v.
-      assert (D: disjoint b c = true) by
-        (rewrite disjoint_iff; eauto).
-      destruct (mem v b) eqn:Mb.
-      SCase "v in b".
-        destruct (mem v c) eqn:Mc.
-        SSCase "v in c".
-          contradict D. rewrite not_true_iff_false.
-          apply disjoint_overlap with (v:=v); auto.
-        SSCase "v not in c".
-          assert (lookup v e = lookup v b) by
-            (eapply lookup_union_mem; eauto).
-          apply lookup_eqv in H; rewrite H; auto.
-      SCase "v not in b".
-        assert (lookup v e = lookup v c) by
-          (eapply lookup_union_not_mem; eauto).
+Lemma tmatch_eq :
+  forall p a, p / p = Some a -> a == mtEnv.
+Proof.
+  induction p; intros.
+  Case "p = tvar v".
+    inversion H. simpl.
+    intros u. unfold try_lookup, lookup, VarImpl.beq_var.
+    destruct (beq_var u v) eqn:uv; auto. apply beq_var_true in uv. auto.
+  Case "p = const i".
+    inversion H. rewrite beq_id_refl in H1. inversion H1. reflexivity.
+  Case "p = empty".
+    inversion H. reflexivity.
+  Case "p = cons p1 p2".
+    apply tmatch_cons in H. inversion_clear H as (b & c & B & C & A).
+    apply IHp1 in B. apply IHp2 in C.
+    intro v.
+    assert (D: disjoint b c = true) by
+      (rewrite disjoint_iff; eauto).
+    destruct (mem v b) eqn:Mb.
+    SCase "v in b".
+      destruct (mem v c) eqn:Mc.
+      SSCase "v in c".
+        contradict D. rewrite not_true_iff_false.
+        apply disjoint_overlap with (v:=v); auto.
+      SSCase "v not in c".
+        assert (lookup v a = lookup v b) by
+          (eapply lookup_union_mem; eauto).
         apply lookup_eqv in H; rewrite H; auto.
-  Qed.
+    SCase "v not in b".
+      assert (lookup v a = lookup v c) by
+        (eapply lookup_union_not_mem; eauto).
+      apply lookup_eqv in H; rewrite H; auto.
+Qed.
 
-  Lemma compose_mtEnv_r : forall e,
-    compose e mtEnv = e.
-  Proof. auto. Qed.
+Lemma compose_mtEnv_r : forall e,
+  compose e mtEnv = e.
+Proof. auto. Qed.
 
-  Lemma compose_mtEnv_l : forall e,
-    compose mtEnv e = e.
-  Proof. intros. induction e; auto. simpl. rewrite IHe. rewrite subs_mtEnv. auto. Qed.
+Lemma compose_mtEnv_l : forall e,
+  compose mtEnv e = e.
+Proof. intros. induction e; auto. simpl. rewrite IHe. rewrite subs_mtEnv. auto. Qed.
 
-  Add Parametric Morphism : compose with signature (equiv ==> equiv ==> equiv) as compose_morph.
-  Proof.
-    intros a1 a2 A b1 b2 B.
-    rewrite subs_lookup_eqv in *.
-    induction t; auto;
-      repeat (rewrite <- compose_subs_eq);
-      rewrite A, B; reflexivity.
-  Qed.
+Add Parametric Morphism : compose with signature (equiv ==> equiv ==> equiv) as compose_morph.
+Proof.
+  intros a1 a2 A b1 b2 B.
+  rewrite subs_lookup_eqv in *.
+  induction p; auto;
+    repeat (rewrite <- compose_subs_eq);
+    rewrite A, B; reflexivity.
+Qed.
 
 
+Definition opt_env_eqv a b :=
+  match (a, b) with
+    | (None, None) => True
+    | (Some a, Some b) => a == b
+    | (_, _) => False
+  end.
 
+Lemma opt_env_eqv_refl : forall a, opt_env_eqv a a.
+Proof. intros. unfold opt_env_eqv. destruct a; reflexivity. Qed.
+Lemma opt_env_eqv_sym : forall a b, opt_env_eqv a b -> opt_env_eqv b a.
+Proof. unfold opt_env_eqv. intros. destruct b; destruct a; auto. symmetry. apply H. Qed.
+Lemma opt_env_eqv_trans : forall a b c, opt_env_eqv a b -> opt_env_eqv b c -> opt_env_eqv a c.
+Proof. unfold opt_env_eqv. intros. destruct b; destruct a; destruct c; auto.
+  transitivity e; auto. contradiction. Qed.
+
+Add Relation (option env) opt_env_eqv
+  reflexivity proved by opt_env_eqv_refl
+  symmetry proved by opt_env_eqv_sym
+  transitivity proved by opt_env_eqv_trans
+  as Opt_env_eqv.
+
+Instance opt_env_eqv_Setoid : Setoid (option env) :=
+  {equiv := opt_env_eqv; setoid_equiv := Opt_env_eqv}.
+
+(*
+Add Parametric Morphism : union with signature (equiv ==> equiv ==> equiv) as Union_morph.
+  intros. 
+*)
   (* Unproven !!! *)
 
-  Corollary subs_tmatch_eq : forall a b p,
-    (forall v, mem v a = true -> fvar v p = true) ->
-    (a * p) / p = Some b -> a == b.
-  Proof.
-    intros a b p FV H.
-    destruct (p / p) eqn:I.
-    Case "p / p exists".
-      assert (E := I). apply tmatch_eq in E.
-      assert (S: b == compose a e) by
-        (eapply subs_tmatch; eauto).
-      rewrite S. rewrite E. reflexivity.
-    Case "p / p dne".
-      admit.
-  Qed.
+Definition wf p :=
+  match p / p with
+    | None => false
+    | Some _ => true
+  end.
 
-  (* Correctness of tmatch *)
-  Lemma tmatch_subs_eq : forall p q a,
-    p / q = Some a -> a * q = p.
-  Proof.
-    apply tmatch_ind; intros; auto.
-    Case "q = tvar v".
-      simpl. assert ((lookup v (bind v p mtEnv)) = Some p) by
-        apply lookup_bind_eq.
-      unfold try_lookup. rewrite H. reflexivity.
-    Case "q = node n q::qs".
-      rewrite subs_cons. simpl in H2. inversion H2.
-      assert (Ep: e * q = p).
-        rewrite <- H1. admit.
-      assert (Eps: map (subs e) qs = ps).
-        rewrite <- H5. admit.
-      assert (Eps': map (subs ps_qs) qs = ps).
-        admit.
-      rewrite Ep. rewrite Eps. rewrite Eps'. reflexivity.
-  Qed.
+Lemma wf_true : forall p, wf p = true -> exists a, p / p = Some a.
+Proof. intros. unfold wf in H. destruct (p / p). exists e; auto. inversion H. Qed.
+
+Lemma wf_var : forall v, wf (tvar v) = true.
+Proof. reflexivity. Qed.
+Hint Resolve wf_var.
+
+Lemma wf_const : forall i, wf (const i) = true.
+Proof. intros. unfold wf. simpl. rewrite beq_id_refl. reflexivity. Qed.
+Hint Resolve wf_const.
+
+Lemma wf_empty : wf empty = true.
+Proof. reflexivity. Qed.
+Hint Resolve wf_empty.
+
+Lemma wf_cons : forall p q,
+  wf (cons p q) = true -> wf p = true /\ wf q = true.
+Proof.
+  intros.
+  unfold wf in *. simpl in H.
+  destruct (p / p); destruct (q / q); try discriminate.
+  auto.
+Qed.
+Hint Resolve wf_cons.
+
+Lemma wf_overlap : forall p q v,
+  fvar v p = true -> fvar v q = true -> wf (cons p q) = false.
+Proof.
+  intros. unfold wf. simpl.
+  destruct (p / p) eqn:P; destruct (q / q) eqn:Q; auto. simpl.
+  rewrite fvar_mem with (p:=p) (q:=p) (e:=e) in H; auto.
+  rewrite fvar_mem with (p:=q) (q:=q) (e:=e0) in H0; auto.
+  rewrite union_overlap with (v:=v); auto.
+Qed.
+
+Lemma disjoint_mem_iff : forall a b,
+  disjoint a b = true <-> forall v, mem v a = true -> mem v b = true -> False.
+Proof.
+  split; intros.
+  Case "Forward".
+    contradict H. rewrite not_true_iff_false.
+    apply disjoint_overlap with (v:=v); assumption.
+  Case "Reverse".
+    induction a as [ | v t a]; auto.
+    simpl. rewrite andb_true_iff. split.
+    SCase "Show v not in b".
+      rewrite negb_true_iff. specialize H with v.
+      rewrite mem_bind_same in H.
+      destruct (mem v b); auto. elim H; auto. reflexivity.
+    SCase "Show (disjoint a b)".
+      apply IHa. intros u Ma Mb.
+      specialize H with u. elim H; try assumption.
+      apply mem_bind. assumption.
+Qed.
+
+Definition fvar_disjoint p q := forall v,
+  fvar v p = true -> fvar v q = true -> False.
+
+Lemma fvar_disjoint_union : forall p q ps qs p_q ps_qs,
+  p / q = Some p_q ->
+  ps / qs = Some ps_qs ->
+  (fvar_disjoint q qs <-> disjoint p_q ps_qs = true).
+Proof.
+  intros.
+  rewrite disjoint_mem_iff. unfold fvar_disjoint.
+  split; intros.
+  Case "forward".
+    rewrite <- fvar_mem with (p:=p) (q:=q) in H2; try assumption.
+    rewrite <- fvar_mem with (p:=ps) (q:=qs) in H3; try assumption.
+    elim H1 with (v:=v); assumption.
+  Case "reverse".
+    rewrite fvar_mem with (p:=p) (e:=p_q) in H2; try assumption.
+    rewrite fvar_mem with (p:=ps) (e:=ps_qs) in H3; try assumption.
+    elim H1 with (v:=v); assumption.
+Qed.
+
+Lemma wf_cons_iff : forall p q,
+  wf (cons p q) = true <-> wf p = true /\ wf q = true /\ fvar_disjoint p q.
+Proof.
+  split; intros.
+  Case "Forward".
+    unfold fvar_disjoint.
+    assert (H' := H). apply wf_cons in H'. inversion H'.
+    split. assumption. split. assumption. intros.
+    contradict H. rewrite not_true_iff_false.
+    apply wf_overlap with (v:=v); assumption.
+  Case "Reverse".
+    inversion_clear H as (WFp & WFq & FV).
+    unfold wf in *. simpl.
+    destruct (p / p) eqn:P; destruct (q / q) eqn:Q; auto.
+      simpl. rename e into e1; rename e0 into e2.
+    assert (D: disjoint e1 e2 = true).
+      rewrite <- fvar_disjoint_union with
+        (p_q:=e1) (ps_qs:=e2) (p:=p) (q:=p) (ps:=q)(qs:=q); auto.
+    apply disjoint_iff in D. inversion D. rewrite H. reflexivity.
+Qed.
+
+Lemma tmatch__wf : forall p q a,
+  p / q = Some a -> wf q = true.
+Proof.
+  intros.
+  eapply tmatch_ind with (p:=p) (q:=q); auto.
+  Case "cons".
+    intros p1 p2 q1 q2 a1 a2 a12 A1 A2 WF1 WF2 A12.
+    assert (G: exists a12, a1 & a2 = Some a12) by (exists a12; assumption).
+    rewrite <- disjoint_iff in G.
+    rewrite disjoint_mem_iff in G.
+    assert (FV: fvar_disjoint q1 q2).
+      rewrite fvar_disjoint_union with
+        (p:=p1) (q:=q1) (ps:=p2) (qs:=q2) (p_q:=a1) (ps_qs:=a2); try assumption.
+      apply disjoint_iff. exists a12. assumption.
+    apply wf_cons_iff; auto.
+    apply H.
+Qed.
+
+Lemma wf__tmatch : forall a p, wf p = true -> exists b, a * p / p = Some b.
+Proof.
+  intros. induction p; simpl; try eauto.
+  Case "const i".
+    rewrite beq_id_refl. eauto.
+  Case "cons p1 p2".
+    apply wf_cons_iff in H. inversion H as (WF1 & WF2 & D).
+    apply IHp1 in WF1. apply IHp2 in WF2.
+    inversion_clear WF1 as (b & B).
+    inversion_clear WF2 as (c & C).
+    rewrite B. rewrite C. simpl.
+    rewrite fvar_disjoint_union with (p_q:=b) (ps_qs:=c) in D; try eauto.
+    apply disjoint_true in D. rewrite D. eauto.
+Qed.
+
+Lemma wf_tmatch_iff : forall a p,
+  wf p = true <-> exists b, a * p / p = Some b.
+Proof.
+  split; intros. apply wf__tmatch; assumption.
+  inversion H as (b & B). apply tmatch__wf with (p:=a*p) (a:=b); assumption.
+Qed.
+
+Definition vareqv a b p :=
+  forall v, fvar v p = true -> try_lookup v a = try_lookup v b.
+
+Lemma subs_vareqv : forall a b p,
+  vareqv a b p -> a * p = b * p.
+Proof.
+  intros. unfold vareqv in H. induction p; try reflexivity.
+  Case "tvar v".
+    simpl. apply H. simpl. apply beq_var_refl.
+  Case "cons p1 p2".
+    simpl. rewrite IHp1. rewrite IHp2. reflexivity.
+      intros. apply H. rewrite fvar_cons. apply orb_true_iff. right; assumption.
+      intros. apply H. rewrite fvar_cons. apply orb_true_iff. left; assumption.
+Qed.
+
+Corollary subs_tmatch_eq : forall a b p,
+  (forall v, mem v a = true -> fvar v p = true) ->
+  (a * p) / p = Some b -> a == b.
+Proof.
+  intros a b p FV H.
+  destruct (p / p) eqn:I.
+  Case "p / p exists".
+    assert (E := I). apply tmatch_eq in E.
+    assert (S: b == compose a e) by
+      (eapply subs_tmatch; eauto).
+    rewrite S. rewrite E. reflexivity.
+  Case "p / p dne".
+    apply tmatch__wf in H. apply wf_true in H. rewrite I in H.
+    inversion H; discriminate.
+Qed.
+
+(*
+Corollary subs_match_eq' : forall a b p,
+  (a * p) / p = Some b -> vareqv a b p.
+*)
+
+Lemma lookup__mem : forall v a t,
+  lookup v a = Some t -> mem v a = true.
+Proof.
+  intros. assert (exists t, lookup v a = Some t). exists t. exact H.
+  rewrite lookup_mem. exact H0.
+Qed.
+
+Lemma lookup_subs_tmatch_eq : forall v a ap_p p q,
+  a * p / p = Some ap_p ->
+  lookup v ap_p = Some q ->
+  (forall u, fvar u p = true -> mem u a = true) ->
+  lookup v a = Some q.
+Proof.
+  intros. generalize dependent ap_p.
+  induction p as [u | | | ]; intros.
+  Case "p = tvar u".
+    simpl in H. inversion H. rewrite <- H3 in H0. simpl in H0.
+    destruct (VarImpl.beq_var v u) eqn:V; try discriminate.
+    specialize H1 with v.
+    inversion H0. apply beq_var_true in V. rewrite <- V in *. clear V.
+    simpl in H1. rewrite beq_var_refl in H1.
+    assert (M : mem v a = true). apply H1. reflexivity.
+    rewrite lookup_mem in M. inversion M as (b & B).
+    rewrite H4. rewrite B.
+    unfold try_lookup in H4. destruct (lookup v a); try discriminate.
+    rewrite <- H4. rewrite B. reflexivity.
+  Case "p = const i".
+    simpl in H. rewrite beq_id_refl in H. inversion H; subst.
+    discriminate H0.
+  Case "p = empty".
+    inversion H; subst. discriminate H0.
+  Case "p = p1 :: p2".
+    assert (H' := H).
+    rewrite subs_cons in H'. apply tmatch_cons in H'.
+    inversion_clear H' as (b & c & B & C & AP_Q).
+    assert (FV := H0). apply lookup__mem in FV.
+    rewrite <- fvar_mem with (p:=a*(p1::p2)) (q:=(p1::p2)) in FV;
+      try assumption.
+    erewrite lookup_union in H0; eauto.
+    simpl in FV. apply orb_prop in FV. inversion_clear FV as [FV1 | FV2].
+    SCase "v in p1".
+      rewrite fvar_mem with (p:=a*p1) (e:=b) in FV1; try assumption.
+      apply IHp1 in B; intros; try assumption.
+      apply H1. rewrite fvar_cons.
+      apply orb_true_intro. left. assumption.
+      destruct (mem v b) eqn:M. assumption. discriminate.
+    SCase "v in p2".
+      rewrite fvar_mem with (p:=a*p2) (e:=c) in FV2; try assumption.
+      apply IHp2 in C; intros; try assumption.
+        apply H1. rewrite fvar_cons.
+        apply orb_true_intro. right. assumption.
+      destruct (mem v b) eqn:M.
+      SSCase "v in b".
+        assert (WF: wf (p1 :: p2) = true) by
+          (eapply tmatch__wf; eauto).
+        contradict WF. rewrite not_true_iff_false.
+        apply wf_overlap with (v:=v).
+          rewrite fvar_mem with (p:=a*p1) (q:=p1) (e:=b); assumption.
+          rewrite fvar_mem with (p:=a*p2) (q:=p2) (e:=c); assumption.
+      SSCase "v not in b".    
+        exact H0.
+Qed.
+
+(* Correctness of tmatch *)
+Theorem tmatch_subs_eq : forall p q a,
+  p / q = Some a -> a * q = p.
+Proof.
+  apply tmatch_ind; intros; auto.
+  Case "q = tvar v".
+    simpl. assert ((lookup v (bind v p mtEnv)) = Some p) by
+    apply lookup_bind_eq.
+    unfold try_lookup. rewrite H. reflexivity.
+  Case "q = node n q::qs".
+    rewrite subs_cons. simpl in H2. inversion H2.
+    assert (Gq: a * q = p_q * q).
+      apply subs_vareqv. intros v FV.
+      rewrite fvar_mem with (p:=p) (e:=p_q) in FV; try assumption.
+      apply union_mem_left with (a:=p_q) (b:=ps_qs) (c:=a) in FV; try assumption.
+      apply lookup_eqv. exact FV.
+    assert (Gqs: a * qs = ps_qs * qs).
+      apply subs_vareqv. intros v FV.
+      rewrite fvar_mem with (p:=ps) (e:=ps_qs) in FV; try assumption.
+      apply union_mem_right with (a:=p_q) (b:=ps_qs) (c:=a) in FV; try assumption.
+      apply lookup_eqv. exact FV.
+    rewrite Gq. rewrite H1. rewrite Gqs. reflexivity.
+Qed.

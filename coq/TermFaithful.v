@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Require Import Coq.Arith.EqNat.
 Require Import Cases.
-Require Import Term2.
+Require Import Term.
 Require Import Env.
 
 Unset Elimination Schemes.
@@ -24,7 +24,7 @@ Definition lterm_rect := fun
       ((fix lterms_rec (ts : list lterm) : P (lnode n ts) :=
         match ts with
           | nil => g n
-          | t :: ts => f n t ts (lterm_rec t) (lterms_rec ts)
+          | List.cons t ts => f n t ts (lterm_rec t) (lterms_rec ts)
         end) ts)
   end.
 
@@ -92,7 +92,7 @@ Fixpoint convert (t : lterm) : term :=
   let converts := fix converts (ts : list lterm) : term :=
     match ts with
       | nil => empty
-      | t :: ts => cons (convert t) (converts ts)
+      | List.cons t ts => cons (convert t) (converts ts)
     end in
   match t with
     | lvar v => tvar v
