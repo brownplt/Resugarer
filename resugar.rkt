@@ -54,7 +54,7 @@
         (display (show-pattern p)) (display "\n"))
       
       (define (show-skip t)
-        (display (format "SKIP ~a\n" (show-term t))))
+        (display (format "SKIP ~a\n" (show-term t #t))))
       
       (define (catmap f xs)
         (append* (map f xs)))

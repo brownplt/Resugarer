@@ -5,8 +5,8 @@
   (require "macro.rkt")
   (require "resugar.rkt")
   (provide
-   make-redex-language define-macro-aware-language
-   make-pattern expand-pattern pattern->redex-term
+   make-redex-language
+   make-pattern expand-pattern pattern->redex-term show-pattern
    define-macro macro-aware-redex-step macro-aware-traces
    macro-aware-eval ;TODO
    term->pattern pattern->term ;For testing !!!
@@ -55,13 +55,22 @@
          [(? atomic? t) t])]
       [else (error (format "pattern->term: cannot convert pattern:\n~a" (show-pattern p)))]))
   
-  (define (show-term t)
+  (define (show-term t [verbose #f])
+    (define (show-origin o)
+      (cond [(o-macro? o) (format "[~a:~a]" (o-macro-m o) (o-macro-c o))]
+            [(o-branch? o) (format "{~a:~a}" (o-branch-m o) (o-branch-c o))]))
+    (define (show-origins os verbose)
+      (if verbose
+          (string-join (map show-origin os) "")
+          ""))
     (match t
       [(? atomic? t)
        (show t)]
       [(cons l (cons (list 'origins o) ts))
-       (format "(~a)" (string-join (cons (symbol->string l)
-                                         (map show-term ts)) " "))]))
+       (format "~a(~a)"
+               (show-origins o verbose)
+               (string-join (cons (symbol->string l)
+                                  (map (lambda (t) (show-term t verbose)) ts)) " "))]))
 
   (define expand-pattern expand)
   
@@ -89,7 +98,7 @@
                     pattern->term
                     term->pattern
                     (λ (t ctx) (map split (apply-reduction-relation red (join t ctx))))
-                    (λ (t) (show-term t))
+                    show-term
                     red
                     join
                     split))
@@ -130,8 +139,8 @@
   (define-syntax-rule
     (macro-aware-traces l red t rest ...)
     (traces red t
-            #:pp (lambda (t a b c)
-                   (default-pretty-printer (format-term-for-traces l t)
+            #:pp (lambda (s a b c)
+                   (default-pretty-printer (format-term-for-traces l s)
                      a b c))
             rest ...))
 ;  (define (macro-aware-traces l red t)
