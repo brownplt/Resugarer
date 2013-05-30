@@ -17,9 +17,9 @@ Definition fvars_subset (q p : term) :=
 Inductive macro_branch :=
 | branch (p q : term) : wf p = true -> wf q = true -> fvars_subset q p -> macro_branch.
 
-Inductive raw_macro :=
-| macro_mt : raw_macro
-| macro_cons : macro_branch -> raw_macro -> raw_macro.
+Inductive macro :=
+| macro_mt : macro
+| macro_cons : macro_branch -> macro -> macro.
 
 Fixpoint expand_branch m t : option term :=
   match m with

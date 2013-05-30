@@ -1,4 +1,3 @@
-
 These CoQ scripts formally prove the lens laws for syntax-rule-style
 case-based macros. They also define and prove correct matching one
 term against another, and unifying two terms. Notable definitions and
@@ -23,12 +22,13 @@ Notation "p :: q" := (cons p q).
 Definition fvars_subset (q p : term) :=
   forall v, fvar v q = true -> fvar v p = true.
 
+(* (wf p) means that term t contains each variable at most once. *)
 Inductive macro_branch :=
 | branch (p q : term) : wf p = true -> wf q = true -> fvars_subset q p -> macro_branch.
 
-Inductive raw_macro :=
-| macro_mt : raw_macro
-| macro_cons : macro_branch -> raw_macro -> raw_macro.
+Inductive macro :=
+| macro_mt : macro
+| macro_cons : macro_branch -> macro -> macro.
 
 
 Lemma lens_1 : forall m t n t',
