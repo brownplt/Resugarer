@@ -11,7 +11,6 @@ Require Import Coq.Classes.RelationClasses.
 Require Import Coq.Setoids.Setoid Coq.Classes.SetoidClass.
 Import StdEnv.
 
-(* TODO: Relax to say (fvar v q -> fvar v p). *)
 Definition fvars_subset (q p : term) :=
   forall v, fvar v q = true -> fvar v p = true.
 
@@ -85,7 +84,6 @@ Fixpoint wfm m :=
     | macro_cons b m =>
       wfb m b && wfm m
   end.
-Definition well_formed_macro m := wfm m.
 
 (* Just for prettier proofs. *)
 Fixpoint wfb m b :=
@@ -397,7 +395,7 @@ Qed.
 Lemma lens_2 : forall m s t n t',
   closed t ->
   unexpand m s t n = Some t' ->
-  well_formed_macro m = true ->
+  wfm m = true ->
   expand m t' = Some (n, t).
 Proof.
   intros. rename H1 into WFM. generalize dependent n.
