@@ -1,4 +1,5 @@
 #lang racket
+(require "resugar.rkt")
 
 (define stack (list))
 
@@ -12,7 +13,7 @@
 
 (define (pop x y)
   (if (not (equal? (car stack) x))
-      (display (format "Different! ~a ~a" (car stack) x))
+      (error (format "Different! ~a ~a" (car stack) x))
       (void))
   (set! stack (cons (format "= ~a" y) (cdr stack)))
   (display-stack)
