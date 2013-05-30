@@ -1,4 +1,5 @@
 Require Import Coq.Lists.List.
+Require Import Coq.Bool.Bool.
 
 Definition applyOpt {a b : Type} (f : a -> option b) (x : option a) : option b :=
   match x with
@@ -13,6 +14,12 @@ Notation "x <- y ; z" := (applyOpt (fun x => z) y)
 Ltac break_ands :=
   repeat match goal with 
     | [ H : _ /\ _ |- _ ] => inversion H; clear H
+  end.
+
+Ltac break_andbs :=
+  repeat match goal with
+    | [ H : _ && _ = _ |- _ ] =>
+      apply andb_prop in H; inversion H; clear H
   end.
 
 Ltac simpl_impls := 
