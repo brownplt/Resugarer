@@ -55,14 +55,42 @@
   (define (hash-union . es)
     (make-immutable-hash (apply append (map hash->list es))))
   
+  ; symbol-begins-with? : symbol -> (char -> bool) -> bool
+  (define (symbol-begins-with? sym pred)
+    (and (symbol? sym)
+         (> (string-length (symbol->string sym)) 0)
+         (pred (string-ref (symbol->string sym) 0))))
+  
+  ; symbol-upper-case? : symbol -> bool
+  ; Does a symbol begin with an upper-case letter?
+  (define (symbol-upper-case? sym)
+    (symbol-begins-with? sym char-upper-case?))
+  
+  ; symbol-lower-case? : symbol -> bool
+  ; Does a symbol begin with a lower-case letter?
+  (define (symbol-lower-case? sym)
+    (symbol-begins-with? sym char-lower-case?))
+  
+  ; string-prefix? : string -> string -> bool
+  ; Does 'string' begin with 'prefix'?
+  (define (string-prefix? prefix string)
+    (and (>= (string-length string) (string-length prefix))
+         (string=? prefix (substring string 0 (string-length prefix)))))
+  
   ; show : any -> string
   (define (show x) (format "~a" x))
   
   ; shows : list<any> -> string
   (define (shows xs) (string-join (map show xs) " "))
   
+  ; use-debug : bool
+  (define use-debug #f)
+  
   ; debug : format-str format-arg ... -> void
   (define-syntax-rule (debug str arg ...)
-    (display (format str arg ...)))
+    (when use-debug (display (format str arg ...))))
 
+  ; fail : format-str format-arg ... -> void
+  (define-syntax-rule (fail str arg ...)
+    (error (format str arg ...)))
 )

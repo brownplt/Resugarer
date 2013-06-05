@@ -3,7 +3,7 @@
    sexpr->pattern pattern->sexpr
    unify minus substitute
    attempt-unification unification-failure?
-   add-global-literals! is-macro-literal? all-macro-literals nominal?
+   nominal?
    (struct-out pvar) (struct-out literal) (struct-out constant)
      (struct-out plist) (struct-out ellipsis)
    (struct-out inter-list) (struct-out inter-ellipsis)
@@ -19,8 +19,8 @@
   (require racket/set)
   
   ; Pattern : pvar
-  ;         | literal
-  ;         | constant   ; symbol or number
+  ;         | literal    ; e.g. $else
+  ;         | constant   ; number or boolean or string
   ;         | plist (P1 ... Pn)
   ;         | ellipsis (P1 ... Pn Q* R1 ... Rm)
   ;         | tag P Orig
@@ -42,14 +42,14 @@
   (struct t-macro (name) #:transparent)
   (struct t-syntax () #:transparent)
   (struct t-apply () #:transparent)
-  (struct t-value () #:transparent)  ; necessary?
+  (struct t-value () #:transparent)  ; currently represented as t-apply
   
   ; Origin : o-user
   ;        | o-eval
   ;        | o-macro macro-name expansion-nonce macro-case
   
   (struct o-macro (m i c) #:transparent)
-  (struct o-branch (m i c) #:transparent)
+  (struct o-branch () #:transparent)
   
   ; Inter : Pattern
   ;       | inter-list (I1 ... In)
@@ -62,71 +62,86 @@
     (and (not (inter-list? x))
          (not (inter-ellipsis? x))))
   
-  (define (make-ellipsis t l m r)
-    (if (set-empty? (free-vars m))
-        (error (format "Empty ellipses: ~a" m))
-        (ellipsis t l m r)))
-  
   ; 'Nominal' terms aren't terms proper and can't have origins.
   (define (nominal? p)
     (match p
       [(plist (t-syntax) _)         #t]
       [(plist (t-macro _) _)        #t]
+      [(plist (t-value) _)          #t]
       [(ellipsis (t-syntax) _ _ _)  #t]
       [(ellipsis (t-macro _) _ _ _) #t]
+      [(ellipsis (t-value) _ _ _)   #t]
       [(constant _)                 #t] ; TODO: tag constants!
       [_                            #f]))
+
   
+  ;;;;;;;;;;;;
+  ;; Syntax ;;
+  ;;;;;;;;;;;;
   
-  ; Keep a global list of macro keywords,
-  ; just to infer which s-expr identifiers should be treated as literals.  
-  (define global-macro-literal-set (set))
+  ; Compile a racket-like macro pattern into a Pattern.
+  ; Guarantees that no ellipses pattern is variableless.
+  ; TODO: Verify that variables are unique
+  ; Treat an id as a var if it is in vars or if vars=#f, and as a const otherwise.
+  (define (sexpr->pattern p [vars #f] [opaque #f])
+    (define (rec p) (sexpr->pattern p vars opaque))
+    (define (make-ellipsis t l m r)
+      (let [[l (map rec l)]
+            [m (rec m)]
+            [r (map rec r)]]
+        (if (set-empty? (free-vars m))
+          (fail "An ellipsis must contain variables: ~a" m)
+          (ellipsis t l m r))))
+    (define (macro-call? s)
+      (if (or (not (cons? s)) (not (symbol? (car s))))
+          #f
+          (let [(str (symbol->string (car s)))]
+            (and (> (string-length str) 0)
+                 (char-upper-case? (string-ref str 0))))))
+    (define (literal-like? sym)
+      (symbol-begins-with? sym (lambda (c) (char=? c #\$))))
+    (define (var-like? sym)
+      (and (symbol-lower-case? sym) (or (not vars) (member sym vars))))
+    (define (const-like? sym)
+      (or (and (symbol-lower-case? sym) (not (var-like? sym)))
+          (and (symbol? sym) (not (symbol-lower-case? sym)))))
+    (define (transparency-marked? l)
+      (and (list? l) (not (empty? l)) (symbol? (car l)) (symbol=? (car l) '!)))
+    (define (add-tag p)
+      (if (and opaque (not (nominal? p)))
+          (tag p (o-branch))
+          p))
+    (cond [(symbol? p)
+           (cond
+             [(literal-like? p)   (literal p)]
+             [(var-like? p)       (pvar p)]
+             [(const-like? p)     (constant p)]
+             [else                (fail "Not a valid literal or variable: ~a" p)])]
+          [(number? p)  (constant p)]
+          [(boolean? p) (constant p)]
+          [(string? p)  (constant p)]
+          [(transparency-marked? p) (sexpr->pattern (cdr p) vars (not opaque))]
+          [(list? p)
+           (add-tag (match p
+             [(list '^ ps ... q '... rs ...)
+              (make-ellipsis (t-syntax) ps q rs)]
+             [(list '^ ps ...)
+              (plist (t-syntax) (map rec ps))]
+             [(? macro-call? (list m ps ... q '... rs ...))
+              (make-ellipsis (t-macro m) ps q rs)]
+             [(? macro-call? (list m ps ...))
+              (plist (t-macro m) (map rec ps))]
+             [(list ps ... q '... rs ...)
+              (make-ellipsis (t-apply) ps q rs)]
+             [(list ps ...)
+              (plist (t-apply) (map rec ps))]))]))
   
-  (define (add-global-literals! lits)
-    (set! global-macro-literal-set
-          (foldl (λ (lit s) (set-add s lit)) global-macro-literal-set lits)))
-  
-  (define (is-macro-literal? x)
-    (and (literal? x)
-         (set-member? global-macro-literal-set (literal-name x))))
-  
-  (define (all-macro-literals)
-    (set->list global-macro-literal-set))
-  
-  (define (show-pattern x [abbreviated #f])
-    (define (show-type t)
-      (match t
-        [(t-macro m) (format "~a " m)]
-        [(t-syntax)    (if abbreviated "" "^ ")]
-        [(t-apply)   ""]))
-;        [_             "[Not a type!]"])) ; !!!
-    (let ((show-pattern (λ (x) (show-pattern x abbreviated))))
-      (match x
-        [(tag x _)           (format "#~a" (show-pattern x))]
-        [(pvar v)            (symbol->string v)]
-        [(literal x)         (format ":~a" (symbol->string x))]
-        [(constant x)        (if abbreviated
-                                 (show x)
-                                 (format "'~a" (show x)))]
-        [(plist (t-syntax) elems)
-                             (format "[~a]"
-                                     (string-join (map show-pattern elems) " "))]
-        [(plist t elems)     (format "(~a~a)"
-                                     (show-type t)
-                                     (string-join (map show-pattern elems) " "))]
-        [(ellipsis t l m r)  (format "(~a~a)"
-                                     (show-type t)
-                                     (string-join
-                                      (append (map show-pattern l)
-                                              (list (show-pattern m))
-                                              (list "...")
-                                              (map show-pattern r))
-                                      " "))])))
-  
+  ; Ignores tags!
   (define (pattern->sexpr x)
     (define (type->sexprs t)
       (match t
         [(t-macro m) (list m)]
+        [(t-syntax) (list '^)]
         [_ (list)]))
     (match x
       [(tag x _)           (pattern->sexpr x)]
@@ -138,52 +153,14 @@
       [(ellipsis t l m r)  (append (type->sexprs t)
                                    (map pattern->sexpr l)
                                    (list (pattern->sexpr m)
-                                         "...")
+                                         '...)
                                    (map pattern->sexpr r))]))
   
-  ;;;;;;;;;;;;
-  ;; Syntax ;;
-  ;;;;;;;;;;;;
-  
-  ; Compile a racket-like macro pattern into a Pattern.
-  ; Guarantees that no ellipses pattern is variableless.
-  ; TODO: Verify that variables are unique
-  ; If vars is #f, treat all symbols as variables.
-  (define (sexpr->pattern p lits macs vars)
-    (let ((sexpr->pattern (λ (p) (sexpr->pattern p lits macs vars))))
-      (cond [(symbol? p)
-             (cond
-               [(member p lits)                 (literal p)]
-               [(or (not vars) (member p vars)) (pvar p)]
-               [else                            (constant p)])]
-            [(number? p)  (constant p)]
-            [(boolean? p) (constant p)]
-            [(string? p)  (constant p)]
-            [(list? p)
-             (match p
-               [(list '^ ps ... q '... rs ...) ; (^ P1 ... Pn Q* R1 ... Rm)
-                (make-ellipsis (t-syntax)
-                               (map sexpr->pattern ps)
-                               (sexpr->pattern q)
-                               (map sexpr->pattern rs))]
-               [(list '^ ps ...) ; (^ P1 ... Pn)
-                (plist (t-syntax) (map sexpr->pattern ps))]
-               [(list ps ... q '... rs ...) ; (P1 ... Pn Q* R1 ... Rm)
-                (if (and (cons? ps) (member (car ps) macs))
-                    (make-ellipsis (t-macro (car ps))
-                                   (map sexpr->pattern (cdr ps))
-                                   (sexpr->pattern q)
-                                   (map sexpr->pattern rs))
-                    (make-ellipsis (t-apply)
-                                   (map sexpr->pattern ps)
-                                   (sexpr->pattern q)
-                                   (map sexpr->pattern rs)))]
-               [(list ps ...) ; (P1 ... Pn)
-                (if (and (cons? ps) (member (car ps) macs))
-                    (plist (t-macro (car ps))
-                           (map sexpr->pattern (cdr ps)))
-                    (plist (t-apply)
-                           (map sexpr->pattern ps)))])])))
+  (define (show-pattern p)
+    (let [[str (format "~v" (pattern->sexpr p))]]
+      (if (string-prefix? "'" str)
+          (substring str 1)
+          str)))
   
   
   ;;;;;;;;;;;;;;;;;
@@ -198,7 +175,7 @@
     (or (CantUnify? x) (OccursCheck? x) (CantMatch? x)))
   
   (define-syntax-rule (attempt-unification u)
-    (with-handlers ((unification-failure? id)) u))
+    (with-handlers [[unification-failure? id]] u))
   
   (define (unifies xs ys)
     (match* (xs ys)
@@ -210,7 +187,7 @@
   ; Fails on patterns like (a x ...) \/ (y a ...) that may not have a
   ;   unique unification.
   (define (unify x y)
-    (let ((fail (λ () (raise (CantUnify x y)))))
+    (let [[fail (λ () (raise (CantUnify x y)))]]
       (match* (x y)
         [((tag x _) y)                (unify x y)]
         [(x (tag y _))                (unify x y)]
@@ -264,7 +241,7 @@
       [(_ _) (no-unique-unification x y)])) ; Have (a x*) \/ (y* b)
   
   (define (no-unique-unification x y)
-    (error "unify-ellipses: There may not be a unique unification."))
+    (fail "unify-ellipses: There may not be a unique unification."))
   
   
   ;;;;;;;;;;;;;;
@@ -273,8 +250,10 @@
   
   
   (define (minus x y [origin #f]) ; o: expected origin, or #f if any
-    (let ((minus (λ (x y) (minus x y origin))))
-    (define (fail) (raise (CantMatch x y)))
+    (let [[minus (λ (x y) (minus x y origin))]]
+    (define (fail) (begin
+                     (debug "CantMatch:\n\t~a\n\t~a\n\n" x y)
+                     (raise (CantMatch (show-pattern x) (show-pattern y)))))
     (define (succeed) empty-env)
     
     (define (minuses xs ys)
@@ -303,7 +282,8 @@
             [(has-origin? x origin) (strip x)]
             [else                   (fail)]))
       
-      (match* ((strip-origin x y) y)
+;      (match* ((strip-origin x y) y)
+      (match* (x y)
         [((literal x) (literal x))     (succeed)]
         [((literal _) _)               (fail)]
         [(_ (literal _))               (fail)]
@@ -342,6 +322,8 @@
                   (minuses l1:l l2)
                   (ellipsis-minuses t l1:r m1 r1:l m2)
                   (minuses r1:r r2)))))]
+        [((tag x (o-branch)) (tag y (o-branch)))
+         (minus x y)]
         [(_ _) (fail)])))
   
   
@@ -402,15 +384,15 @@
            (ellipsis-bindings (filter (λ (b) (inter-ellipsis? (cdr b))) bindings))
            (scalar-bindings   (filter (λ (b) (scalar?         (cdr b))) bindings)))
       (cond [(empty? bindings)
-             (error "Substitute: ellipsis without variables")]
+             (fail "Substitute: ellipsis without variables")]
             [(and (empty? list-bindings) (empty? ellipsis-bindings))
-             (error "Substitute: ellipsis with mismatched variable bindings")]
+             (fail "Substitute: ellipsis with mismatched variable bindings")]
             [(and (not (empty? list-bindings)) (not (empty? ellipsis-bindings)))
-             (error "Substitute: ellipsis does not contain variables of sufficient depths")]
+             (fail "Substitute: ellipsis does not contain variables of sufficient depths")]
             [(empty? ellipsis-bindings)
              (let ((list-lens (map (λ (b) (length (inter-list-elems (cdr b)))) list-bindings)))
                (if (not (all-eq? list-lens))
-                   (error "Substitute: ellipsis variables of differing lengths")
+                   (fail "Substitute: ellipsis variables of differing lengths")
                    (substitute-list t (car list-lens) list-bindings)))]
             [(empty? list-bindings)
              (let ((head-lens (map (λ (b) (length (inter-ellipsis-head (cdr b))))
@@ -418,7 +400,7 @@
                    (tail-lens (map (λ (b) (length (inter-ellipsis-tail (cdr b))))
                                    ellipsis-bindings)))
                (if (or (not (all-eq? head-lens)) (not (all-eq? tail-lens)))
-                   (error "Substitute: ellipsis variables of differing lengths'")
+                   (fail "Substitute: ellipsis variables of differing lengths'")
                    (substitute-ellipsis t (car head-lens)
                                           (car tail-lens)
                                           ellipsis-bindings)))])))
@@ -488,7 +470,7 @@
           (raise (OccursCheck v x))
           (let ((e (hash-modify e (λ (y) (replace-one v x y)))))
             (if (hash-has-key? e v)
-                (error (format "Variable ~a bound twice!" v))
+                (fail "Variable ~a bound twice!" v)
                 (hash-set e v x))))))
 
 )

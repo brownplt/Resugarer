@@ -28,7 +28,7 @@
      x
      v
      (x := e))
-  (op + cons first rest empty? eq?)
+  (op + cons first rest empty? eq? string-first string-rest)
   (s (store (x v) ...))
   (v (lambda o x e)
      number
@@ -121,6 +121,11 @@
    (store (x_1 v_1) ... (x v_new) (x_2 v_2) ...)
    (side-condition (not (member (term x) (term (x_1 ...)))))])
 
+(define (string-first str)
+  (substring str 0 1))
+(define (string-rest str)
+  (substring str 1))
+  
 (define red
   (reduction-relation
    Min
@@ -138,6 +143,8 @@
    (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(eq? (term v_1) (term v_2))))
    (--> (in-hole pc (first o_1 (cons o_2 v_1 v_2))) (in-hole pc v_1))
    (--> (in-hole pc (rest o_1 (cons o_2 v_1 v_2)))  (in-hole pc v_2))
+   (--> (in-hole pc (string-first o v))             (in-hole pc ,(string-first (term v))))
+   (--> (in-hole pc (string-rest o v))              (in-hole pc ,(string-rest (term v))))
    
    (--> (top s (in-hole ec x))
         (top s (in-hole ec (look x s)))
@@ -203,6 +210,8 @@
  [`(begin ,o (+ ,o 1 2) (+ ,o 3 4) (+ ,o 5 6))             11]
  [`(if ,o #t 1 2) 1]
  [`(if ,o #f 1 2) 2]
+ [`(string-first ,o "abc") "a"]
+ [`(string-rest ,o "abc") "bc"]
  )
   
 ;;; Resugaring Integration ;;;

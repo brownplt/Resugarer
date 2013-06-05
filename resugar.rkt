@@ -1,5 +1,5 @@
 (module resugar racket
-  (require rackunit)
+  (require (except-in rackunit fail))
   (require "utility.rkt")
   (require "pattern.rkt")
   (require "macro.rkt")
@@ -47,7 +47,7 @@
     (name pattern->term term->pattern step show-term))
   
   (define-syntax-rule (make-pattern t)
-    (sexpr->pattern 't (all-macro-literals) (all-macro-names) (list)))
+    (sexpr->pattern 't (list) #f))
   
   ; macro-aware-step :: Language t c -> pattern -> c -> list (cons pattern c)
   (define (macro-aware-step lang p ctx)
@@ -81,7 +81,7 @@
   
   (define (macro-aware-eval lang p ctx)
     (let [[next-progs (macro-aware-step lang p ctx)]]
-      (cons (show-pattern p #t)
+      (cons (show-pattern p)
             (if (empty? next-progs)
                 (list)
                 (macro-aware-eval lang (caar next-progs) (cdar next-progs))))))

@@ -62,7 +62,7 @@
   (define (make-show-term lookup-var)
     (define (show-origin o)
       (cond [(o-macro? o) (format "[~a:~a]" (o-macro-m o) (o-macro-c o))]
-            [(o-branch? o) (format "{~a:~a}" (o-branch-m o) (o-branch-c o))]))
+            [(o-branch? o) "!"]))
     (define (show-origins os verbose)
       (if verbose
           (string-join (map show-origin os) "")
