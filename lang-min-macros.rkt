@@ -53,12 +53,20 @@
    (lambda v1 (Lambdas [^ v2 vs ...] body))])
 
 (define-macro Lets
+  [(Lets [^ [^ [^ f x] e]] b)
+   (apply (lambda f b) (lambda x e))]
+  [(Lets [^ [^ [^ f x] e] [^ xs es] ...] b)
+   (apply (lambda f (Lets [^ [^ xs es] ...] b)) (lambda x e))]
   [(Lets [^ [^ x e]] b)
    (apply (lambda x b) e)]
   [(Lets [^ [^ x e] [^ xs es] ...] b)
    (apply (lambda x (Lets [^ [^ xs es] ...] b)) e)])
 
 (define-macro Sets
+  [(Sets [^ [^ [^ f x] e]] b)
+   (begin (set! f (lambda x e)) b)]
+  [(Sets [^ [^ [^ f x] e] xs ...] b)
+   (begin (set! f (lambda x e)) (Sets [^ xs ...] b))]
   [(Sets [^ [^ x e]] b)
    (begin (set! x e) b)]
   [(Sets [^ [^ x e] xs ...] b)
@@ -211,21 +219,22 @@
 
 (define-macro Cdavr
   [(Cdavr input)
-   (Letrecs [^ [^ init (lambda x (Cond [^ (eq? x "")
-                                          #f]
-                                       [^ (eq? "c" (string-first x))
-                                          (! apply more (string-rest x))]))]
-               [^ more (lambda x (Cond [^ (eq? x "")
-                                          #f]
-                                       [^ (eq? "a" (string-first x))
-                                          (! apply more (string-rest x))]
-                                       [^ (eq? "d" (string-first x))
-                                          (! apply more (string-rest x))]
-                                       [^ (eq? "r" (string-first x))
-                                          (! apply end (string-rest x))]))]
-               [^ end (lambda x (Cond [^ (eq? x "")
-                                         #t]
-                                      [^ #t #f]))]]
+   (Letrecs [^ [^ [^ init x]
+                  (if (eq? x "") #f
+                      (Lets [^ [^ head (string-first x)]
+                               [^ tail (string-rest x)]]
+                            (Cond [^ (eq? "c" head) (! apply more tail)]
+                                  [^ $else #f])))]
+               [^ [^ more x]
+                  (if (eq? x "") #f
+                      (Lets [^ [^ head (string-first x)]
+                               [^ tail (string-rest x)]]
+                            (Cond [^ (eq? "a" head) (! apply more tail)]
+                                  [^ (eq? "d" head) (! apply more tail)]
+                                  [^ (eq? "r" head) (! apply end tail)]
+                                  [^ $else #f])))]
+               [^ [^ end x]
+                  (eq? x "")]]
      (! apply init input))])
 
 (test-eval
@@ -237,9 +246,9 @@
                (cons "a" (cons "a" (cons "a" empty)))]]
          (run run-fun an-Engine "more" the-input))))
 
-(set-debug-steps! #t)
+(set-debug-steps! #f)
 (set-debug-tags! #t)
-(set-debug-store! #f)
+(set-debug-store! #t)
 
 (test-eval (+ 1 2))
 (test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
@@ -251,6 +260,7 @@
 (test-eval (Letrecs [^ [^ x 1] [^ y 2]] (+ x y)))
 (test-eval (Cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ $else (+ 5 6)]))
 (test-eval (Or (eq? 1 2) (eq? 2 2) (eq? 3 2)))
+(test-eval (Lets [^ [^ [^ f x] (+ x 1)]] (apply f 3)))
 ;(test-eval (Cps ("apply" ("lambda" x (+ x 1)) 3)))
 ;(test-eval (CpsT ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
 ;                                   ("lambda" x (+ x 1)))
@@ -262,6 +272,8 @@
 
 ;(test-eval (Cdavr "cd"))
 ;(test-eval (Cdavr "cadr"))
+(test-eval (Cdavr "cadr"))
+(test-eval (Cdavr "cdad"))
 
 #|
 (test-eval (apply (Fischer ("apply" ("lambda" x (+ x 1)) 3)) (lambda h h)))

@@ -29,7 +29,7 @@
      v
      (x := e))
   (op + cons first rest empty? eq? string-first string-rest)
-  (s (store (x v) ...))
+  (s (store (x x v) ...))
   (v (lambda o x e)
      number
      boolean
@@ -37,7 +37,7 @@
      empty
      (cons o v v))
   (x variable-not-otherwise-mentioned)
-  (pc (top (store (x v) ...) ec))
+  (pc (top (store (x x v) ...) ec))
   (ec (apply o v ... ec e ...)
       (op o v ... ec e ...)
       (set! o variable ec)
@@ -52,33 +52,6 @@
   [(swap x_1 x_2 x_2) x_1]
   [(swap x_1 x_2 (any_1 ...)) ((swap x_1 x_2 any_1) ...)]
   [(swap x_1 x_2 any_1) any_1])
-
-#|
-(define-metafunction Min
-  appstore : s e -> e
-  [(appstore s (lambda o x e))
-   (lambda o x (appstore s e))]
-  [(appstore s number) number]
-  [(appstore s (name a boolean)) a]
-  [(appstore s (name a string)) a]
-  [(appstore s empty) empty]
-  [(appstore s (cons o v_1 v_2))
-   (cons o (appstore s v_1) (appstore s v_2))]
-  [(appstore s (apply o e ...))
-   (apply o (appstore s e) ...)]
-  [(appstore s (op o e ...))
-   (op o (appstore s e) ...)]
-  [(appstore s (set! o x e))
-   (set! o x (appstore s e))]
-  [(appstore s (begin o e ...))
-   (begin o (appstore s e) ...)]
-  [(appstore s (if o e_1 e_2 e_3))
-   (if o (appstore s e_1) (appstore s e_2) (appstore s e_3))]
-  [(appstore s (rec o e_1 e_2 e_3))
-   (rec o (appstore s e_1) (appstore s e_2) (appstore s e_3))]
-  [(appstore s x)
-   "?"])
-|#
 
 (define-metafunction Min
   subs : x e e -> e
@@ -110,15 +83,15 @@
   [(subs x e empty) empty])
 
 (define-metafunction Min
-  look : x (store (x v) ...) -> v
-  [(look x (store (x_1 v_1) ... (x v) (x_2 v_2) ...))
+  look : x (store (x x v) ...) -> v
+  [(look x (store (x_1 x_11 v_1) ... (x x_10 v) (x_2 x_12 v_2) ...))
    v
    (side-condition (not (member (term x) (term (x_1 ...)))))])
 
 (define-metafunction Min
-  set : x v (store (x v) ...) -> (store (x v) ...)
-  [(set x v_new (store (x_1 v_1) ... (x v) (x_2 v_2) ...))
-   (store (x_1 v_1) ... (x v_new) (x_2 v_2) ...)
+  set : x v (store (x x v) ...) -> (store (x x v) ...)
+  [(set x v_new (store (x_1 x_11 v_1) ... (x x_10 v) (x_2 x_12 v_2) ...))
+   (store (x_1 x_11 v_1) ... (x x_10 v_new) (x_2 x_12 v_2) ...)
    (side-condition (not (member (term x) (term (x_1 ...)))))])
 
 (define (string-first str)
@@ -140,7 +113,7 @@
    (--> (in-hole pc (empty? o empty))               (in-hole pc #t))
    (--> (in-hole pc (empty? o (cons o_1 v_1 v_2)))  (in-hole pc #f))
    (--> (in-hole pc (+ o v ...))                    (in-hole pc ,(apply + (term (v ...)))))
-   (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(eq? (term v_1) (term v_2))))
+   (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(equal? (term v_1) (term v_2))))
    (--> (in-hole pc (first o_1 (cons o_2 v_1 v_2))) (in-hole pc v_1))
    (--> (in-hole pc (rest o_1 (cons o_2 v_1 v_2)))  (in-hole pc v_2))
    (--> (in-hole pc (string-first o v))             (in-hole pc ,(string-first (term v))))
@@ -154,16 +127,16 @@
         (top (set x v s) (in-hole ec v))
         "set!")
 
-   (--> (top (store (x_1 v_1) ...)
+   (--> (top (store (x_1 x_2 v_1) ...)
              (in-hole ec (apply o_1 (lambda o_2 x e) v)))
-        (top (store (x_1 v_1) ... (x_new v))
+        (top (store (x_1 x_2 v_1) ... (x_new x v))
              (in-hole ec (subs x x_new e)))
-        (where x_new ,(variable-not-in (term (x_1 ...)) 'x))
+        (fresh x_new)
         "apply-one")
 
-   (--> (top (store (x_1 v_1) ...)
+   (--> (top (store (x_1 x_2 v_1) ...)
              (in-hole ec (apply o_1 (lambda o_2 x e) v_2 v_3 v_4 ...)))
-        (top (store (x_1 v_1) ... (x_new v_2))
+        (top (store (x_1 x_2 v_1) ... (x_new x v_2))
              (in-hole ec (apply o_1 (subs x x_new e) v_3 v_4 ...)))
         (where x_new ,(variable-not-in (term (x_1 ...)) 'x))
         "apply-many")
@@ -207,6 +180,11 @@
  [`(apply ,o (lambda ,o x (apply ,o (lambda ,o x x) 2)) 1)  2]
  [`(apply ,o (lambda ,o x (+ ,o x 1)) (+ ,o 1 2))           4]
  [`(apply ,o (lambda ,o x (lambda ,o y (+ ,o x y))) 2 3)    5]
+ [`(apply ,o (lambda ,o x (begin ,o
+     (set! ,o x (+ ,o x 1))
+     (set! ,o x (apply ,o (lambda ,o x (begin ,o (set! ,o x (+ ,o x 2)) (+ ,o x x))) x))
+     (+ ,o x x x)))
+   7)                                                      60]
  [`(begin ,o (+ ,o 1 2) (+ ,o 3 4) (+ ,o 5 6))             11]
  [`(if ,o #t 1 2) 1]
  [`(if ,o #f 1 2) 2]
@@ -230,15 +208,18 @@
   (define (lookup var bindings)
     (match bindings
       [(list) #f]
-      [(cons (list x v) bindings)
-       (if (symbol=? var x) v (lookup var bindings))]))
+      [(cons (list x name v) bindings)
+       (if (symbol=? var x) (cons name v) (lookup var bindings))]))
   (lookup var (cdr store)))
 
 (define MAMin
   (make-redex-language "Min" Min red join split lookup-var))
 
 (define-syntax-rule (test-eval p)
-  (macro-aware-eval MAMin (make-pattern p) empty-store))
+  (begin
+    (for-each (λ (x) (display (format "~a\n" x)))
+              (macro-aware-eval MAMin (make-pattern p) empty-store))
+    (display "\n")))
 
 (define-syntax-rule (make-term p)
   (pattern->redex-term MAMin (expand-pattern (make-pattern p)) empty-store))

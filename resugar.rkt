@@ -57,10 +57,11 @@
           [step (language-step lang)]]
       
       (when DEBUG_STEPS
-        (display (show-pattern p)) (display "\n"))
+        (display (show-term (pattern->term p) ctx)) (display "\n\n"))
+        ;(display (show-pattern p)) (display "\n"))
       
       (define (show-skip t ctx)
-        (display (format "SKIP ~a\n" (show-term t ctx DEBUG_TAGS))))
+        (display (format "SKIP ~a\n\n" (show-term t ctx DEBUG_TAGS))))
       
       (define (catmap f xs)
         (append* (map f xs)))
@@ -80,10 +81,14 @@
       (new-step (pattern->term (expand p)) ctx)))
   
   (define (macro-aware-eval lang p ctx)
-    (let [[next-progs (macro-aware-step lang p ctx)]]
-      (cons (show-pattern p)
-            (if (empty? next-progs)
-                (list)
-                (macro-aware-eval lang (caar next-progs) (cdar next-progs))))))
+    (define (rec lang p ctx)
+      (let [[next-progs (macro-aware-step lang p ctx)]
+            [show-term (language-show-term lang)]
+            [pattern->term (language-pattern->term lang)]]
+        (cons (show-term (pattern->term p) ctx)
+              (if (empty? next-progs)
+                  (list)
+                  (rec lang (caar next-progs) (cdar next-progs))))))
+    (deduplicate (rec lang p ctx)))
 
 )

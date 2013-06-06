@@ -55,6 +55,17 @@
   (define (hash-union . es)
     (make-immutable-hash (apply append (map hash->list es))))
   
+  ; deduplicate : list -> list
+  ; Remove adjacent duplicates from a list, like unix 'uniq'
+  (define (deduplicate l [same? equal?])
+    (match l
+      [(list) (list)]
+      [(list x) (list x)]
+      [(cons x (cons y ys))
+       (if (same? x y)
+           (deduplicate (cons y ys))
+           (cons x (deduplicate (cons y ys))))]))
+  
   ; symbol-begins-with? : symbol -> (char -> bool) -> bool
   (define (symbol-begins-with? sym pred)
     (and (symbol? sym)

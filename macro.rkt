@@ -95,11 +95,17 @@
     (define (rec p)
       (match p
         [(constant c)   (constant c)]
-        [(literal l)    (literal l)]  ; impossible?
+        [(literal l)    (literal l)]
         [(plist t ps)   (plist t (map rec ps))]
         [(tag p2 o)     (match o
                           [(o-macro m i n) (unexpand-macro (rec p2) o)]
-                          [(o-branch) (tag (rec p2) o)])]))
+                          [(o-branch)
+                           (match p2
+                             ; Fail to unexpand if a macro is tainted
+                             [(tag p3 (o-macro m i n))
+                              (tag p3 (o-macro m i n))]
+                             [p2 (tag (rec p2) o)])])]))
+;                          [(o-branch) (tag (rec p2) o)])]))
     (check-unlittered (rec p)))
   
   (define (unexpand p)

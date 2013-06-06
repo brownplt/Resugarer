@@ -48,16 +48,24 @@
         [else (error (format "pattern->term: expected a constant in head-position in : ~a" (show-pattern p)))]))
     (match p
       [(constant c) c]
+      [(literal l) l]
       [(plist (t-apply) (cons l ps))
        (cons (strip-tags l)
-             (cons (list 'origins (list))
-                   (map pattern->term ps)))]
+            (cons (list 'origins (list))
+                  (map pattern->term ps)))]
+      [(plist (t-syntax) ps)
+       (map pattern->term ps)]
+      [(plist (t-macro m) ps)
+       (cons m (cons (list 'origins (list)) (map pattern->term ps)))]
       [(tag p o)
        (match (pattern->term p)
          [(cons l (cons (list 'origins os) ts))
           (cons l (cons (list 'origins (cons o os)) ts))]
          [(? atomic? t) t])]
       [else (error (format "pattern->term: cannot convert pattern:\n~a" (show-pattern p)))]))
+  
+  (define (untainted t)
+    (unexpand (term->pattern t)))
   
   (define (make-show-term lookup-var)
     (define (show-origin o)
@@ -71,17 +79,22 @@
       (define (rec t)
         (match t
           [(? symbol? t)
-           (if (and recurse DEBUG_STORE)
-               (let [[x (lookup-var t ctx rec)]]
-                 (if x (format "~a:=~a" t (show-term x ctx #f #f)) (show t)))
-               (show t))]
+           (let [[x (lookup-var t ctx rec)]]
+             (if x
+                 (if (and recurse DEBUG_STORE (untainted (cdr x)))
+                     (show-term (pattern->term (unexpand (term->pattern (cdr x)))) ctx #f #f)
+                     ;(format "~a:=~a" (car x) (show-term (cdr x) ctx #f #f))
+                     (show (car x)))
+                 (show t)))]
           [(? atomic? t)
-           (show t)]
+           (format "~v" t)]
           [(cons l (cons (list 'origins o) ts))
            (format "~a(~a)"
                    (show-origins o verbose)
                    (string-join (cons (symbol->string l)
-                                      (map rec ts)) " "))]))
+                                      (map rec ts)) " "))]
+          [(? list? ts)
+           (format "(^ ~a)" (string-join (map rec ts) " "))]))
       (rec t))
     show-term)
 
