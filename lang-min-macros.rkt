@@ -100,15 +100,17 @@
   [(_ "accept")
    (lambda stream
      (Cond
-       [^ (empty? stream) #t]
-       [^ #t #f]))]
+       [^ (eq? "" stream) #t]
+       [^ $else #f]))]
   [(_ [^ label $-> target] ...)
    (lambda stream
-     (Cond
-       [^ (empty? stream) #f]
-       [^ (eq? label (first stream)) (apply target (rest stream))]
-       ...
-       [^ #t #f]))])
+     (if (eq? "" stream) #f
+         (Lets [^ [^ head (string-first stream)]
+                  [^ tail (string-rest stream)]]
+               (Cond
+                [^ (eq? label head) (! apply target tail)]
+                ...
+                [^ $else #f]))))])
 
 (define-macro Automaton
   [(_ init-state
@@ -283,6 +285,26 @@
 |#
 ;(test-eval (std-Letrecs [^ [^ x 1]] x))
 
+(test-eval
+ (Let M (Automaton
+         init
+         [^ init $: [^ "c" $-> more]]
+         [^ more $: [^ "a" $-> more]
+                    [^ "d" $-> more]
+                    [^ "r" $-> end]]
+         [^ end $:  "accept"])
+   (apply M "cadr")))
+
+(test-eval
+ (Let M (Automaton
+         init
+         [^ init $: [^ "c" $-> more]]
+         [^ more $: [^ "a" $-> more]
+                    [^ "d" $-> more]
+                    [^ "r" $-> end]]
+         [^ end $:  "accept"])
+   (apply M "cdad")))
+
 #|
 (test-eval
  (Automaton
@@ -294,18 +316,6 @@
          init
          [^ init : "accept"])
    (apply M empty)))
-
-(test-eval
- (Let M (Automaton
-         init
-         [^ init : [^ "c" -> more]]
-         [^ more : [^ "a" -> more]
-                   [^ "d" -> more]
-                   [^ "r" -> end]]
-         [^ end :  "accept"])
-   (cons
-    (apply M (cons "c" (cons "a" (cons "d" (cons "r" empty)))))
-    (apply M (cons "c" (cons "d" empty))))))
 
 (test-eval
  (Let M (Automaton

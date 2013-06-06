@@ -66,7 +66,7 @@
   (define (nominal? p)
     (match p
       [(plist (t-syntax) _)         #t]
-      [(plist (t-macro _) _)        #t]
+      [(plist (t-macro _) _)        #f]
       [(plist (t-value) _)          #t]
       [(ellipsis (t-syntax) _ _ _)  #t]
       [(ellipsis (t-macro _) _ _ _) #t]
