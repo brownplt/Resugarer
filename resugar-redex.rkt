@@ -12,11 +12,6 @@
    term->pattern pattern->term ;For testing !!!
    )
 
-  (define (atomic? t) (or (symbol? t)
-                          (number? t)
-                          (boolean? t)
-                          (string? t)))
-
   ; Assume that Redex terms all have the form
   ; | (label origins x ...)
   ; | atom 

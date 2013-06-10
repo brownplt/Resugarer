@@ -1,6 +1,6 @@
 (module pattern-untyped racket
   (provide
-   sexpr->pattern pattern->sexpr
+   sexpr->pattern pattern->sexpr atomic?
    unify minus substitute
    attempt-unification unification-failure?
    add-global-literals! is-macro-literal? all-macro-literals nominal?
@@ -57,6 +57,11 @@
   
   (struct inter-list (type elems) #:transparent)
   (struct inter-ellipsis (type head rep tail) #:transparent)
+  
+  (define (atomic? t) (or (symbol? t)
+                          (number? t)
+                          (boolean? t)
+                          (string? t)))
   
   (define (scalar? x)
     (and (not (inter-list? x))
