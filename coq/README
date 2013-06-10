@@ -1,0 +1,54 @@
+These CoQ scripts formally prove the lens laws for syntax-rule-style
+case-based macros. They also define and prove correct matching one
+term against another, and unifying two terms. Notable definitions and
+lemmas appear below.
+
+File dependency order:
+  Util.v
+  Term.v, Env.v
+  Subs.v
+  Match.v
+  Unify.v
+  Macro.v
+
+
+Inductive term :=
+| tvar : var -> term
+| const : id -> term
+| empty : term
+| cons : term -> term -> term.
+Notation "p :: q" := (cons p q).
+
+Definition fvars_subset (q p : term) :=
+  forall v, fvar v q = true -> fvar v p = true.
+
+(* (wf p) means that term t contains each variable at most once. *)
+Inductive macro_branch :=
+| branch (p q : term) : wf p = true -> wf q = true -> fvars_subset q p -> macro_branch.
+
+Inductive macro :=
+| macro_mt : macro
+| macro_cons : macro_branch -> macro -> macro.
+
+
+Lemma lens_1 : forall m t n t',
+  closed t ->
+  expand m t = Some (n, t') ->
+  unexpand m t t' n = Some t.
+
+(* (wfm m) says that m's branches are pairwise disjoint. *)
+Lemma lens_2 : forall m s t n t',
+  closed t ->
+  unexpand m s t n = Some t' ->
+  well_formed_macro m = true ->   
+  expand m t' = Some (n, t).
+
+
+The file TermFaithful.v gives an alternate definition of terms a
+conversion function from alternate terms to standard terms, and proves
+that 
+  subs e p = subs e q <-> subs' e (convert p) = subs' e (convert q).
+Since matching and unification are proven correct w.r.t. substitution,
+and macro expansion and unexpansion are defined in terms of
+substitution, matching, and unification, the lens laws must also hold
+of the alternate terms.

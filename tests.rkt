@@ -1,6 +1,6 @@
 #lang racket
-(require rackunit)
 (require "utility.rkt")
+(require (except-in rackunit fail))
 (require "pattern.rkt")
 (require "macro.rkt")
 
@@ -35,7 +35,7 @@
 (define test-origin (list))
 
 (define-syntax-rule (test-pattern p)
-  (sexpr->pattern 'p test-lits test-macs test-vars))
+  (sexpr->pattern 'p (list 'x 'xs 'y 'ys 'z 'zs)))
 
 ;(define-syntax-rule (test-template p)
 ;  (sexpr->template 'p test-vars))
@@ -57,11 +57,8 @@
 (define (test-plist . elems)
   (plist test-origin (apply list elems)))
 
-(check-equal? (sexpr->pattern '(cond (^ (^ x y) (^ xs ys) ... (if (^ else x))))
-                              '(else)
-                              '(cond)
-                              #f)
-  (plist (t-macro 'cond)
+(check-equal? (sexpr->pattern '(Cond (^ (^ x y) (^ xs ys) ... (if (^ $else x)))))
+  (plist (t-macro 'Cond)
    (list (ellipsis (t-syntax)
                    (list (plist (t-syntax)
                                 (list (pvar 'x) (pvar 'y))))
@@ -70,24 +67,25 @@
                    (list (plist (t-apply)
                                 (list (pvar 'if)
                                       (plist (t-syntax)
-                                             (list (literal 'else) (pvar 'x))))))))))
+                                             (list (literal '$else) (pvar 'x))))))))))
 
 (define-syntax-rule (test-show ptn str)
   (check-equal? (show-pattern (test-pattern ptn)) str))
 
 (test-show x "x")
-(test-show else ":else")
-(test-show a "'a")
+(test-show $else "$else")
+(test-show c "c")
+(test-show 3 "3")
 (test-show () "()")
 (test-show (x) "(x)")
 (test-show (x y) "(x y)")
-(test-show (a x b) "('a x 'b)")
+(test-show (1 x #t y "string") "(1 x #t y \"string\")")
+(test-show (M x y ...) "(M x y ...)")
 (test-show (x ...) "(x ...)")
 (test-show (x y ...) "(x y ...)")
 (test-show (x ... y) "(x ... y)")
 (test-show (x y x ... y x) "(x y x ... y x)")
 (test-show (() (() (x))) "(() (() (x)))")
-
 
 ;;;;;;;;;;;;;;;;;
 ;; Unification ;;
@@ -106,24 +104,24 @@
 (check-unify x y x) ; y is also reasonable
 (check-unify x a a)
 (check-unify a x a)
-(check-unify-fail x A)
+(check-unify-fail x $a)
 (check-unify x () ())
 (check-unify () x ())
 (check-unify x (y ...) (y ...))
 (check-unify (x ...) y (x ...))
 (check-unify a a a)
 (check-unify-fail a b)
-(check-unify-fail a A)
+(check-unify-fail a $a)
 (check-unify-fail a ())
 (check-unify-fail a (x ...))
-(check-unify-fail A ())
-(check-unify-fail A (x ...))
+(check-unify-fail $a ())
+(check-unify-fail $a (x ...))
 (check-unify () () ())
-(check-unify (a B c) (a B c) (a B c))
-(check-unify (x A b) (a A y) (a A b))
-(check-unify (x a C) (y a C) (x a C))
+(check-unify (a $b c) (a $b c) (a $b c))
+(check-unify (x $a b) (a $a y) (a $a b))
+(check-unify (x a $c) (y a $c) (x a $c))
 (check-unify-fail (a a) (a a a))
-(check-unify-fail (x A b) (a z y))
+(check-unify-fail (x $a b) (a z y))
 (check-unify () (x ...) ())
 (check-unify (x ...) () ())
 (check-unify (x ...) (y ...) (x ...))
@@ -143,7 +141,6 @@
 (check-unify ((x x) ...)       (y ... (a a))     ((x x) ... (a a)))
 (check-unify ((x y) ...)       ((a b) (a c))     ((a b) (a c)))
 
-
 ;;;;;;;;;;;;;;
 ;; Matching ;;
 ;;;;;;;;;;;;;;
@@ -155,31 +152,30 @@
 (define-syntax-rule (check-minus-fail x y)
   (check-exn CantMatch? (thunk (minus (test-pattern x) (test-pattern y)))))
 
-
 (check-minus x x (mk-hash (x x)))
 (check-minus x y (mk-hash (y x)))
-(check-minus-fail x A)
-(check-minus-fail A x)
+(check-minus-fail x $a)
+(check-minus-fail $a x)
 (check-minus a x (mk-hash (x a)))
 (check-minus-fail x a)
 (check-minus () x (mk-hash (x ())))
 (check-minus-fail x ())
 (check-minus (y ...) x (mk-hash (x (y ...))))
 (check-minus-fail x (y ...))
-(check-minus A A (mk-hash))
-(check-minus-fail A B)
-(check-minus-fail a A)
-(check-minus-fail A a)
+(check-minus $a $a (mk-hash))
+(check-minus-fail $a $b)
+(check-minus-fail a $a)
+(check-minus-fail $a a)
 (check-minus a a (mk-hash))
 (check-minus-fail a b)
 (check-minus-fail a ())
 (check-minus-fail a (x ...))
 (check-minus-fail () a)
 (check-minus-fail (x ...) a)
-(check-minus-fail A ())
-(check-minus-fail A (x ...))
-(check-minus-fail () A)
-(check-minus-fail (x ...) A)
+(check-minus-fail $a ())
+(check-minus-fail $a (x ...))
+(check-minus-fail () $a)
+(check-minus-fail (x ...) $a)
 (check-minus () () (mk-hash)) ; !!!
 (check-minus-fail (x ...) ())
 (check-minus ()              (x ...) (mk-hash (x (@))))
@@ -300,27 +296,28 @@
 ;;;;;;;;;;;;
 
 
-(define-macro cond (else) ()
-  [(_ (^ else x))    x]
+(define-macro Cond
+  [(_ (^ $else x))    x]
   [(_ (^ x y))       (if x y (void))]
-  [(_ (^ x y) z ...) (if x y (cond z ...))])
+  [(_ (^ x y) z ...) (! if x y (Cond z ...))])
 
-(define cond-origin* (t-macro 'cond))
+(define cond-origin* (t-macro 'Cond))
 (define (plist* o . xs) (plist o (apply list xs)))
 
-(check-equal? (lookup-macro 'bob) #f)
-(check-equal? (lookup-macro 'cond)
-  (Macro 'cond
+(check-equal? (lookup-macro 'Bob) #f)
+(check-equal? (lookup-macro 'Cond)
+  (Macro 'Cond
     (list
      (MacroCase (plist* cond-origin*
-                        (plist* (t-syntax) (literal 'else) (pvar 'x)))
+                        (plist* (t-syntax) (literal '$else) (pvar 'x)))
                 (pvar 'x))
-                ;(plist* (t-apply) (constant '+) (pvar 'x) (constant 0)))
      (MacroCase (plist* cond-origin*
                         (plist* (t-syntax) (pvar 'x) (pvar 'y)))
-                (plist* (t-apply)
-                        (constant 'if) (pvar 'x) (pvar 'y)
-                        (plist* (t-apply) (constant 'void))))
+                (tag (plist* (t-apply)
+                             (constant 'if) (pvar 'x) (pvar 'y)
+                             (tag (plist* (t-apply) (constant 'void))
+                                  (o-branch)))
+                     (o-branch)))
      (MacroCase (ellipsis cond-origin*
                           (list (plist* (t-syntax) (pvar 'x) (pvar 'y)))
                           (pvar 'z)
@@ -331,29 +328,17 @@
                                   (pvar 'z)
                                   (list)))))))
 
-(show-pattern (expand (test-pattern (cond (^ (+ a 2) 1) (^ else 2)))))
+(define-syntax-rule (test-expand-unexpand p)
+  (check-equal? (unexpand (expand (test-pattern p)))
+                (test-pattern p)))
 
-(show-pattern (unexpand (expand (test-pattern (cond (^ 1 2))))))
+(test-expand-unexpand (Cond [^ 1 2]))
+(test-expand-unexpand (Cond [^ $else 2]))
+(test-expand-unexpand (Cond [^ (+ a 2) 1] [^ $else (+ 1 2)]))
+(test-expand-unexpand (Cond [^ $else (+ 1 1)]))
+(test-expand-unexpand (Cond [^ (+ a 2) 1] [^ $else 2]))
 
-(show-pattern (expand (test-pattern (cond (^ 1 2)))))
-
-(check-equal? (unexpand (expand (test-pattern (cond (^ 1 2)))))
-              (test-pattern (cond (^ 1 2))))
-
-(check-equal? (unexpand (expand (test-pattern (cond (^ else 2)))))
-              (test-pattern (cond (^ else 2))))
-
-(check-equal? (unexpand (expand (test-pattern (cond (^ (+ a 2) 1) (^ else (+ 1 2))))))
-              (test-pattern (cond (^ (+ a 2) 1) (^ else (+ 1 2)))))
-
-(expand (test-pattern (cond (^ else 2))))
-
-(check-equal? (unexpand (expand (test-pattern (cond (^ else (+ 1 1))))))
-              (test-pattern (cond (^ else (+ 1 1)))))
-
-(show-pattern (expand (test-pattern (cond (^ (+ a 2) 1) (^ else 2)))))
-
-
+#|
 ;;;;;;;;;;;;;;
 ;;; Letrec ;;;
 ;;;;;;;;;;;;;;
@@ -400,6 +385,8 @@
              (+ x y))))
  7)
 
+|#
+
 #|
 (define (tag-cond2 id e)
   (Tag e id (list-ref (Macro-cases (lookup-macro 'cond)) 1)))
@@ -425,3 +412,4 @@
 ;(show-pattern (expand (test-pattern (cond (a 1) (else 2)))))
 ;(show-pattern (unexpand (expand (test-pattern (cond (a 1) (else 2))))))
 ;(show-pattern (expand-macro (lookup-macro 'cond) (test-pattern (cond (false true)))))
+

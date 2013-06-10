@@ -1,4 +1,8 @@
-#lang racket
+(module lang-min racket
+  (provide
+   Min red
+   test-eval test-expand
+   )
 
 ; Assembled from Matthias' letrec (personal correspondence)
 ; and redex/example/letrex.rkt.
@@ -13,7 +17,6 @@
   ;;; Language ;;;
   ;;;;;;;;;;;;;;;;
 
-
 (define-language Min
   (p (top s e))
   (e (apply o e ...)
@@ -23,9 +26,10 @@
      (if o e e e)
      (rec o x e)
      x
-     v)
-  (op + cons first rest empty? eq?)
-  (s (store (x v) ...))
+     v
+     (x := e))
+  (op + cons first rest empty? eq? string-first string-rest)
+  (s (store (x x v) ...))
   (v (lambda o x e)
      number
      boolean
@@ -33,7 +37,7 @@
      empty
      (cons o v v))
   (x variable-not-otherwise-mentioned)
-  (pc (top (store (x v) ...) ec))
+  (pc (top (store (x x v) ...) ec))
   (ec (apply o v ... ec e ...)
       (op o v ... ec e ...)
       (set! o variable ec)
@@ -79,17 +83,22 @@
   [(subs x e empty) empty])
 
 (define-metafunction Min
-  look : x (store (x v) ...) -> v
-  [(look x (store (x_1 v_1) ... (x v) (x_2 v_2) ...))
+  look : x (store (x x v) ...) -> v
+  [(look x (store (x_1 x_11 v_1) ... (x x_10 v) (x_2 x_12 v_2) ...))
    v
    (side-condition (not (member (term x) (term (x_1 ...)))))])
 
 (define-metafunction Min
-  set : x v (store (x v) ...) -> (store (x v) ...)
-  [(set x v_new (store (x_1 v_1) ... (x v) (x_2 v_2) ...))
-   (store (x_1 v_1) ... (x v_new) (x_2 v_2) ...)
+  set : x v (store (x x v) ...) -> (store (x x v) ...)
+  [(set x v_new (store (x_1 x_11 v_1) ... (x x_10 v) (x_2 x_12 v_2) ...))
+   (store (x_1 x_11 v_1) ... (x x_10 v_new) (x_2 x_12 v_2) ...)
    (side-condition (not (member (term x) (term (x_1 ...)))))])
 
+(define (string-first str)
+  (substring str 0 1))
+(define (string-rest str)
+  (substring str 1))
+  
 (define red
   (reduction-relation
    Min
@@ -104,9 +113,11 @@
    (--> (in-hole pc (empty? o empty))               (in-hole pc #t))
    (--> (in-hole pc (empty? o (cons o_1 v_1 v_2)))  (in-hole pc #f))
    (--> (in-hole pc (+ o v ...))                    (in-hole pc ,(apply + (term (v ...)))))
-   (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(eq? (term v_1) (term v_2))))
+   (--> (in-hole pc (eq? o v_1 v_2))                (in-hole pc ,(equal? (term v_1) (term v_2))))
    (--> (in-hole pc (first o_1 (cons o_2 v_1 v_2))) (in-hole pc v_1))
    (--> (in-hole pc (rest o_1 (cons o_2 v_1 v_2)))  (in-hole pc v_2))
+   (--> (in-hole pc (string-first o v))             (in-hole pc ,(string-first (term v))))
+   (--> (in-hole pc (string-rest o v))              (in-hole pc ,(string-rest (term v))))
    
    (--> (top s (in-hole ec x))
         (top s (in-hole ec (look x s)))
@@ -116,16 +127,16 @@
         (top (set x v s) (in-hole ec v))
         "set!")
 
-   (--> (top (store (x_1 v_1) ...)
+   (--> (top (store (x_1 x_2 v_1) ...)
              (in-hole ec (apply o_1 (lambda o_2 x e) v)))
-        (top (store (x_1 v_1) ... (x_new v))
+        (top (store (x_1 x_2 v_1) ... (x_new x v))
              (in-hole ec (subs x x_new e)))
-        (where x_new ,(variable-not-in (term (x_1 ...)) 'x))
+        (fresh x_new)
         "apply-one")
 
-   (--> (top (store (x_1 v_1) ...)
+   (--> (top (store (x_1 x_2 v_1) ...)
              (in-hole ec (apply o_1 (lambda o_2 x e) v_2 v_3 v_4 ...)))
-        (top (store (x_1 v_1) ... (x_new v_2))
+        (top (store (x_1 x_2 v_1) ... (x_new x v_2))
              (in-hole ec (apply o_1 (subs x x_new e) v_3 v_4 ...)))
         (where x_new ,(variable-not-in (term (x_1 ...)) 'x))
         "apply-many")
@@ -144,7 +155,6 @@
   ;;;;;;;;;;;;;;;;;;;;;;;;
   ;;; Language Testing ;;;
   ;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (define (run-eval e)
   (third (car (apply-reduction-relation* red `(top (store) ,e)))))
@@ -170,24 +180,46 @@
  [`(apply ,o (lambda ,o x (apply ,o (lambda ,o x x) 2)) 1)  2]
  [`(apply ,o (lambda ,o x (+ ,o x 1)) (+ ,o 1 2))           4]
  [`(apply ,o (lambda ,o x (lambda ,o y (+ ,o x y))) 2 3)    5]
+ [`(apply ,o (lambda ,o x (begin ,o
+     (set! ,o x (+ ,o x 1))
+     (set! ,o x (apply ,o (lambda ,o x (begin ,o (set! ,o x (+ ,o x 2)) (+ ,o x x))) x))
+     (+ ,o x x x)))
+   7)                                                      60]
  [`(begin ,o (+ ,o 1 2) (+ ,o 3 4) (+ ,o 5 6))             11]
  [`(if ,o #t 1 2) 1]
  [`(if ,o #f 1 2) 2]
+ [`(string-first ,o "abc") "a"]
+ [`(string-rest ,o "abc") "bc"]
  )
-
-  ;;;;;;;;;;;;;;
-  ;;; Macros ;;;
-  ;;;;;;;;;;;;;;
+  
+;;; Resugaring Integration ;;;
 
 (define empty-store (term (store)))
 
+(define (join expr store)
+  `(top ,store ,expr))
+
+(define (split top)
+  (let [[store (second top)]
+        [expr (third top)]]
+    (cons expr store)))
+
+(define (lookup-var var store show)
+  (define (lookup var bindings)
+    (match bindings
+      [(list) #f]
+      [(cons (list x name v) bindings)
+       (if (symbol=? var x) (cons name v) (lookup var bindings))]))
+  (lookup var (cdr store)))
+
 (define MAMin
-  (make-redex-language "Min" Min red
-                       (λ (expr store) `(top ,store ,expr))
-                       (λ (top) (cons (third top) (second top)))))
+  (make-redex-language "Min" Min red join split lookup-var))
 
 (define-syntax-rule (test-eval p)
-  (macro-aware-eval MAMin (make-pattern p) empty-store #t))
+  (begin
+    (for-each (λ (x) (display (format "~a\n" x)))
+              (macro-aware-eval MAMin (make-pattern p) empty-store))
+    (display "\n")))
 
 (define-syntax-rule (make-term p)
   (pattern->redex-term MAMin (expand-pattern (make-pattern p)) empty-store))
@@ -196,201 +228,9 @@
   (reduction-relation Min
     (--> p ,(macro-aware-redex-step MAMin (term p)))))
 
-(check-equal? (apply-reduction-relation marred (term (top (store) (+ ,o 1 2))))
-              '((top (store) 3)))
-
 (define-syntax-rule (test-trace t)
   (macro-aware-traces MAMin marred (make-term t)))
 
-(require "macro.rkt")
-(require "pattern.rkt")
 (define-syntax-rule (test-expand p)
   (show-pattern (expand-pattern (make-pattern p))))
-
-
-
-(define-macro thunk () ()
-  [(thunk body)
-   (lambda unused body)])
-
-(define-macro force () ()
-  [(force thunk)
-   (apply thunk "unused")])
-
-(define-macro let () ()
-  [(let x e b)
-   (apply (lambda x b) e)])
-
-(define-macro letrec () (let)
-  [(letrec x e b)
-   (let x 0 (begin (set! x e) b))])
-
-;(define-macro lets () (let)
-;  [(lets [^ [^ x e] xs ...] b)
-;   (let x e (lets [^ xs ...] b))]
-;  [(lets [^] b)
-;   b])
-
-(define-macro lambdas () ()
-  [(lambdas [^ var] body)
-   (lambda var body)]
-  [(lambdas [^ v1 v2 vs ...] body)
-   (lambda v1 (lambdas [^ v2 vs ...] body))])
-
-(define-macro lets () ()
-  [(lets [^ [^ x e]] b)
-   (apply (lambda x b) e)]
-  [(lets [^ [^ x e] [^ xs es] ...] b)
-   (apply (lambda x (lets [^ [^ xs es] ...] b)) e)])
-
-(define-macro sets () ()
-  [(sets [^ [^ x e]] b)
-   (begin (set! x e) b)]
-  [(sets [^ [^ x e] xs ...] b)
-   (begin (set! x e) (sets [^ xs ...] b))])
-
-(define-macro letrecs () (lets sets)
-  [(letrecs [^ [^ x e] ...] b)
-   (lets [^ [^ x 0] ...]
-         (sets [^ [^ x e] ...]
-               b))])
-
-(define-macro cond (else) ()
-  [(cond [^ else x])    x]
-  [(cond [^ x y])       (if x y (+ 0 0))]
-  [(cond [^ x y] z ...) (if x y (cond z ...))])
-
-;(define-macro std-letrecs () (let lets thunk force)
-;  [(std-letrec [^ [^ var init] ...] body)
-;   (lets [^ [^ var 0] ...]
-;         (lets [^ [^ var (let temp init (thunk (set! var temp)))] ...]
-;               (let bod (thunk body)
-;                 (begin (begin (force var) ...)
-;                        (force bod)))))])
-
-; TODO: bug!
-(define-macro condfalse (else) (cond)
-  [(condfalse)
-   (cond [^ else #f])])
-
-(define-macro process-state (->) (cond)
-  [(_ "accept")
-   (lambda stream
-     (cond
-       [^ (empty? stream) #t]
-       [^ #t #f]))]
-  [(_ [^ label -> target] ...)
-   (lambda stream
-     (cond
-       [^ (empty? stream) #f]
-       [^ (eq? label (first stream)) (apply target (rest stream))]
-       ...
-       [^ #t #f]))])
-
-(define-macro automaton (:) (process-state letrecs)
-  [(_ init-state
-    [^ state : response ...]
-    ...)
-   (letrecs [^ [^ state (process-state response ...)] ...]
-     init-state)])
-
-#|  Totally Bonkers |#
-
-(define-macro engine-part (->) (cond)
-  [(engine-part "accept")
-   (lambda input #t)]
-  [(engine-part [^ label -> target] ...)
-   (lambda input
-     (cond
-       [^ (eq? input label) target]
-       ...
-       [^ #t #f]))])
-
-(define-macro engine (:) (cond lambdas engine-part)
-  [(engine [^ state : response ...] ...)
-   (lambdas [^ s i]
-     (cond [^ (eq? s state) (apply (engine-part response ...) i)]
-           ...))])
-
-(define-macro run () ()
-  [(run fun engine state inputs)
-   (apply fun engine state inputs)])
-
-(define-macro run-body () (run lambdas cond let)
-  [(run-body)
-   (lambdas [^ eng state inputs]
-      (let next (apply eng state (first inputs))
-        (cond [^ (eq? next #f) #f]
-              [^ (eq? next #t) #t]
-              [^ #t (let inputs (rest inputs)
-                      (run run-fun eng next inputs))])))])
-
-;(test-eval (engine [^ "x" : "accept"]))
-;(test-eval (run (engine [^ "x" : "accept"]) "x" empty))
-;(test-eval (run (engine [^ "x" : "accept"]) "x" (cons "x" empty)))
-;(test-eval (run (engine [^ "more" : [^ "a" -> "more"]]) "more"
-;                (cons "a" (cons "a" (cons "a" empty)))))
-(test-eval
- (letrec run-fun
-   (run-body)
-   (lets [^ [^ an-engine
-               (engine [^ "more" : [^ "a" -> "more"]])]
-            [^ the-input
-               (cons "a" (cons "a" (cons "a" empty)))]]
-         (run run-fun an-engine "more" the-input))))
-
-(test-eval (+ 1 2))
-(test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
-(test-eval (let x 3 (+ x x)))
-(test-eval (letrec x (lambda y x) (apply x 6)))
-(test-eval (cond (^ #f (+ 1 2))))
-(test-eval (lets [^ [^ x 1] [^ y 2]] (+ x y)))
-(test-eval (letrecs [^ [^ x 1]] x))
-(test-eval (letrecs [^ [^ x 1] [^ y 2]] (+ x y)))
-(test-eval (cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ else (+ 5 6)]))
-;(test-eval (std-letrecs [^ [^ x 1]] x))
-
-#|
-(test-eval
- (automaton
-  init
-  [^ init : "accept"]))
-; ((let M (automaton
-;          init
-;          [^ init : "accept"])
-;    (apply M empty))))
-
-(test-eval
- (let M (automaton
-         init
-         [^ init : "accept"])
-   (apply M empty)))
-
-(test-eval
- (let M (automaton
-         init
-         [^ init : [^ "c" -> more]]
-         [^ more : [^ "a" -> more]
-                   [^ "d" -> more]
-                   [^ "r" -> end]]
-         [^ end :  "accept"])
-   (cons
-    (apply M (cons "c" (cons "a" (cons "d" (cons "r" empty)))))
-    (apply M (cons "c" (cons "d" empty))))))
-
-(test-eval
- (let M (automaton
-         init
-         [^ init : [^ "a" -> init]])
-   (apply M (cons "a" (cons "a" (cons "a" empty))))))
-|#
-
-;(test-trace (+ 1 2))
-;(test-trace (letrec x x x))
-;(test-trace (letrecs [^ [^ x (lambda z y)] [^ y (lambda z x)]]
-;                     (apply x y)))
-;(test-trace (cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ else (+ 5 6)]))
-(test-trace (+ 1 (cond (^ (eq? 1 2) (+ 1 2)) (^ (eq? 1 3) (+ 3 4)))))
-(test-trace (lets [^ [^ x (+ 1 1)] [^ y (+ 1 2)]] (+ x y)))
-;(test-trace (letrec x x (+ x x)))
-;(test-trace (letrecs [^ [^ x (lambda z x)] [^ y (lambda z y)]] (apply x y)))
+ )
