@@ -1,6 +1,6 @@
 (module pattern-untyped racket
   (provide
-   sexpr->pattern pattern->sexpr atomic?
+   sexpr->pattern pattern->sexpr
    unify minus substitute
    attempt-unification unification-failure?
    nominal?
@@ -57,11 +57,6 @@
   
   (struct inter-list (type elems) #:transparent)
   (struct inter-ellipsis (type head rep tail) #:transparent)
-  
-  (define (atomic? t) (or (symbol? t)
-                          (number? t)
-                          (boolean? t)
-                          (string? t)))
   
   (define (scalar? x)
     (and (not (inter-list? x))
