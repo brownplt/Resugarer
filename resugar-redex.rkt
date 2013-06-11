@@ -81,7 +81,7 @@
           [(? symbol? t)
            (let [[x (lookup-var t ctx rec)]]
              (if x
-                 (if (and recurse DEBUG_STORE (untainted (cdr x)))
+                 (if (and recurse (untainted (cdr x)))
                      (show-term (pattern->term (unexpand (term->pattern (cdr x)))) ctx #f #f)
                      ;(format "~a:=~a" (car x) (show-term (cdr x) ctx #f #f))
                      (show (car x)))
@@ -91,7 +91,7 @@
           [(cons l (cons (list 'origins o) ts))
            (format "~a(~a)"
                    (show-origins o verbose)
-                   (string-join (cons (symbol->string l)
+                   (string-join (cons (show l)
                                       (map rec ts)) " "))]
           [(? list? ts)
            (format "(^ ~a)" (string-join (map rec ts) " "))]))
