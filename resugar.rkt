@@ -5,10 +5,11 @@
   (require "macro.rkt")
   (provide
    define-macro
-   make-pattern
+   make-pattern test-expand
    language language-name language-pattern->term language-term->pattern language-step language-show-term
    macro-aware-step
    macro-aware-eval
+   macro-aware-eval*
    set-debug-tags! set-debug-steps!)
   
   (define DEBUG_TAGS #f)
@@ -49,6 +50,9 @@
   (define-syntax-rule (make-pattern t)
     (sexpr->pattern 't (list) #f))
   
+  (define-syntax-rule (test-expand p)
+    (expand (make-pattern p)))
+  
   ; macro-aware-step :: Language t c -> pattern -> c -> list (cons pattern c)
   (define (macro-aware-step lang p ctx)
     (let [[term->pattern (language-term->pattern lang)]
@@ -80,6 +84,7 @@
       
       (new-step (pattern->term (expand p)) ctx)))
   
+  ; macro-aware-eval :: Language t c -> pattern -> c -> list (cons pattern c)
   (define (macro-aware-eval lang p ctx)
     (define (rec lang p ctx)
       (let [[next-progs (macro-aware-step lang p ctx)]
@@ -90,5 +95,31 @@
                   (list)
                   (rec lang (caar next-progs) (cdar next-progs))))))
     (deduplicate (rec lang p ctx)))
+  
+  ; macro-aware-eval* : (pattern -> term)
+  ;                  -> (term -> (pattern -> void) -> void)
+  ;                  -> void
+  ; A callback-based version of macro-aware-eval.
+  (define (macro-aware-eval* pattern->term steps p)
+    
+    (define last #f)
+    
+    (define (output-line str)
+      (when (not (equal? str last))
+        (display str) (newline)
+        (set! last str)))
+    
+    (define (show-step p)
+      (output-line (show-pattern p)))
+    
+    (define (show-skip p)
+      (when DEBUG_STEPS
+        (output-line (format "SKIP: ~a" (show-pattern p)))))
+    
+    (define (callback p)
+      (let [[p* (unexpand p)]]
+        (if p* (show-step p*) (show-skip p))))
+    
+    (steps (pattern->term (expand p)) callback))
 
 )

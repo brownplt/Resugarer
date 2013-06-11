@@ -16,11 +16,6 @@
   (define DEBUG_STORE #f)
   (define (set-debug-store! x) (set! DEBUG_STORE x))
 
-  (define (atomic? t) (or (symbol? t)
-                          (number? t)
-                          (boolean? t)
-                          (string? t)))
-
   ; Assume that Redex terms all have the form
   ; | (label origins x ...)
   ; | atom 
