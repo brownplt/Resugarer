@@ -58,12 +58,17 @@
       [(term-list os_ (cons 'lambda rest))
        (pt/rec ctx (term-list os_ (cons 'λ rest)) c_)]
       ; (λ (v) x)
-      [(term-list os_ (list 'λ (term-list os2 (list (? symbol? v_))) x_))
+      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? v_))) x_))
        (with-syntax [[(ctx-var*) (generate-temporaries #'(ctx))]
                      [term* term]]
          (with-syntax [[x-eval* (pt/eval #'ctx-var* x_ c_)]
                        [v* v_]]
            #'(Lamb (λ (ctx-var*) (λ (v*) (Var 'v* x-eval*))) term*)))]
+      ; (set! v x)
+      [(term-list os_ (list 'set! (? symbol? v_) x_))
+       (with-syntax [[ctx* ctx] [os* os_] [v* v_]]
+         (with-syntax [[x-eval* (pt/eval #'(λ (w) (ctx* (tlist (list . os*) 'set! v* w))) x_ c_)]]
+           #'(set! v* x-eval*)))]
       ; (f x)
       [(term-list os_ (list f_ x_))
        (with-syntax [[(f-var* x-var*) (generate-temporaries #'(f_ x_))]
@@ -160,4 +165,5 @@
   (test-eval (Inc (+ 1 2)))
   (test-eval (Inc (+ (Inc 1) (Inc 2))))
   (test-eval (+ 1 (Cond [^ #f (+ 1 2)] [^ (Or #f #t) (+ 2 3)])))
+  (test-eval ((λ (x) (if (set! x (+ x 1)) x x)) 3))
 )
