@@ -4,7 +4,7 @@
    expand unexpand
    ; testing:
    unchecked-unexpand
-   NotUnexpandable? instantiate-macro
+   NotUnexpandable?
    Macro Macro-cases MacroCase expand-macro)
   (require "utility.rkt")
   (require "pattern.rkt")
@@ -24,16 +24,16 @@
                      [(qc ...) (generate-temporaries #'(q ...))])
          #'(let [[pc (sexpr->pattern '(name p ...) #f #f)] ...]
            (let [[qc (sexpr->pattern 'q (set->list (free-vars pc)) #t)] ...]
-             (Macro 'name (list (MacroCase pc qc) ...)))))]))
+             (tag-macro (Macro 'name (list (MacroCase pc qc) ...))))))]))
   
-  (define (instantiate-macro m id)
-    (define (wrap-macro i n c)
+  (define (tag-macro m)
+    (define (wrap-macro n c)
       (match c
         [(MacroCase left right)
-         (MacroCase left (tag right (o-macro (Macro-name m) i n)))]))
+         (MacroCase left (tag right (o-macro (Macro-name m) n)))]))
     (match m
       [(Macro name cases)
-       (Macro name (map (λ (n) (wrap-macro id n (list-ref cases n)))
+       (Macro name (map (λ (n) (wrap-macro n (list-ref cases n)))
                         (range (length cases))))]))
   
   
@@ -52,28 +52,22 @@
   (struct NotUnexpandable (pattern) #:transparent)
   
   (define (expand-macro m x)
-    (define (expand-instantiated-macro m x id)
-      (match m
-        [(Macro name (list))
-         (fail "No matching pattern in macro ~a for ~a" name (show-pattern x))]
-        [(Macro name (cons (MacroCase p q) cs))
-         (let* [[e (attempt-unification (minus x p))]]
-           (if (unification-failure? e)
-               (expand-instantiated-macro (Macro name cs) x id)
-               (substitute e q)))]))
-    (expand-instantiated-macro (instantiate-macro m id) x id))
+    (match m
+      [(Macro name (list))
+       (fail "No matching pattern in macro ~a for ~a" name (show-pattern x))]
+      [(Macro name (cons (MacroCase p q) cs))
+       (let* [[e (attempt-unification (minus x p))]]
+         (if (unification-failure? e)
+             (expand-macro (Macro name cs) x)
+             (substitute e q)))]))
   
   (define (unexpand-macro x origin)
     (match origin
-      [(o-macro m i n)
+      [(o-macro m n)
        (let* [[c (list-ref (Macro-cases (lookup-macro m)) n)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-;         (display (format "Unexpand ~a (~a => ~a)\n"
-;                          (show-pattern x)
-;                          (show-pattern lhs)
-;                          (show-pattern rhs)))
-         (substitute (minus x rhs (o-branch)) lhs))]))
+         (substitute (minus (tag x (o-macro m n)) rhs (o-branch)) lhs))]))
   
   (define (expand e)
     (match e
@@ -98,14 +92,14 @@
         [(literal l)    (literal l)]
         [(plist t ps)   (plist t (map rec ps))]
         [(tag p2 o)     (match o
-                          [(o-macro m i n) (unexpand-macro (rec p2) o)]
-                          [(o-branch)
+                          [(o-macro m n) (unexpand-macro (rec p2) o)]
+                          #;[(o-branch)
                            (match p2
                              ; Fail to unexpand if a macro is tainted
                              [(tag p3 (o-macro m i n))
                               (tag p3 (o-macro m i n))]
-                             [p2 (tag (rec p2) o)])])]))
-;                          [(o-branch) (tag (rec p2) o)])]))
+                             [p2 (tag (rec p2) o)])]
+                          [(o-branch) (tag (rec p2) o)])]))
     (check-unlittered (rec p)))
   
   (define (unexpand p)

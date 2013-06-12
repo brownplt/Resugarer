@@ -13,25 +13,6 @@
 (define test-macs '(cond and))
 (define test-vars '(x y z xs ys zs))
 
-(define (make-pattern p lits vars)
-    (let ((make-pattern (λ (p) (make-pattern p lits vars))))
-      (cond [(symbol? p)
-             (if (member p lits) (literal p)
-                 (if (member p vars) (pvar p)
-                     (constant p)))]
-            [(list? p)
-             (match p
-               [(list ps ... q '... rs ...) ; (P1 ... Pn Q*)
-                (let ((l (map make-pattern ps))
-                      (m (make-pattern q))
-                      (r (map make-pattern rs)))
-                  (ellipsis l m r))]
-               [_ ; (P1 ... Pn)
-                (plist (map make-pattern p))])]
-            [(or (number? p) (boolean? p))
-             (constant p)]
-            [else (error (format "bad pattern: ~a" p))])))
-
 (define test-origin (list))
 
 (define-syntax-rule (test-pattern p)
@@ -310,23 +291,25 @@
     (list
      (MacroCase (plist* cond-origin*
                         (plist* (t-syntax) (literal '$else) (pvar 'x)))
-                (pvar 'x))
+                (tag (pvar 'x) (o-macro 'Cond 0)))
      (MacroCase (plist* cond-origin*
                         (plist* (t-syntax) (pvar 'x) (pvar 'y)))
-                (tag (plist* (t-apply)
-                             (constant 'if) (pvar 'x) (pvar 'y)
-                             (tag (plist* (t-apply) (constant 'void))
-                                  (o-branch)))
-                     (o-branch)))
+                (tag (tag (plist* (t-apply)
+                                  (constant 'if) (pvar 'x) (pvar 'y)
+                                  (tag (plist* (t-apply) (constant 'void))
+                                       (o-branch)))
+                          (o-branch))
+                     (o-macro 'Cond 1)))
      (MacroCase (ellipsis cond-origin*
                           (list (plist* (t-syntax) (pvar 'x) (pvar 'y)))
                           (pvar 'z)
                           (list))
-                (plist* (t-apply) (constant 'if) (pvar 'x) (pvar 'y)
-                        (ellipsis cond-origin*
-                                  (list)
-                                  (pvar 'z)
-                                  (list)))))))
+                (tag (plist* (t-apply) (constant 'if) (pvar 'x) (pvar 'y)
+                             (ellipsis cond-origin*
+                                       (list)
+                                       (pvar 'z)
+                                       (list)))
+                     (o-macro 'Cond 2))))))
 
 (define-syntax-rule (test-expand-unexpand p)
   (check-equal? (unexpand (expand (test-pattern p)))

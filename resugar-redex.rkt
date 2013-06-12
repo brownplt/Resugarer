@@ -1,15 +1,16 @@
 (module resugar-redex racket
   (require redex)
-  (require "utility.rkt")
-  (require "pattern.rkt")
-  (require "macro.rkt")
+;  (require "utility.rkt")
+;  (require "pattern.rkt")
+;  (require "macro.rkt")
   (require "resugar.rkt")
   (provide
    make-redex-language
-   make-pattern expand-pattern pattern->redex-term show-pattern
+   expand-term show-term
    define-macro macro-aware-redex-step macro-aware-traces
    macro-aware-eval ;TODO
-   term->pattern pattern->term ;For testing !!!
+   term->redex make-term
+   ;term->pattern pattern->term ;For testing !!!
    set-debug-store! set-debug-tags! set-debug-steps!
    )
   
@@ -22,82 +23,6 @@
   ; where 'label' identifies the term type, e.g. λ, if, apply,
   ; 'origins' is a list of pattern origins,
   ; and 'x ...' are either subterms, having the same form.
-  
-  (define (term->pattern t [store #f])
-    (define (origs->tags os p)
-      (match os 
-        [(list) p]
-        [(cons o os) (tag (origs->tags os p) o)]))
-    (match t
-      [(? atomic? t)
-       (constant t)]
-      [(cons l (cons (list 'origins os) ts))
-       (origs->tags os
-         (plist (t-apply) (cons (constant l) (map term->pattern ts))))]))
-
-  (define (pattern->term p)
-    (define (strip-tags p)
-      (match p
-        [(constant l) l]
-        [(tag p _) (strip-tags p)]
-        [else (error (format "pattern->term: expected a constant in head-position in : ~a" (show-pattern p)))]))
-    (match p
-      [(constant c) c]
-      [(literal l) l]
-      [(plist (t-apply) (cons l ps))
-       (cons (strip-tags l)
-            (cons (list 'origins (list))
-                  (map pattern->term ps)))]
-      [(plist (t-syntax) ps)
-       (map pattern->term ps)]
-      [(plist (t-macro m) ps)
-       (cons m (cons (list 'origins (list)) (map pattern->term ps)))]
-      [(tag p o)
-       (match (pattern->term p)
-         [(cons l (cons (list 'origins os) ts))
-          (cons l (cons (list 'origins (cons o os)) ts))]
-         [(? atomic? t) t])]
-      [else (error (format "pattern->term: cannot convert pattern:\n~a" (show-pattern p)))]))
-  
-  (define (untainted t)
-    (unexpand (term->pattern t)))
-  
-  (define (make-show-term lookup-var)
-    (define (show-origin o)
-      (cond [(o-macro? o) (format "[~a:~a]" (o-macro-m o) (o-macro-c o))]
-            [(o-branch? o) "!"]))
-    (define (show-origins os verbose)
-      (if verbose
-          (string-join (map show-origin os) "")
-          ""))
-    (define (show-term t ctx [verbose #f] [recurse #t])
-      (define (rec t)
-        (match t
-          [(? symbol? t)
-           (let [[x (lookup-var t ctx rec)]]
-             (if x
-                 (if (and recurse (untainted (cdr x)))
-                     (show-term (pattern->term (unexpand (term->pattern (cdr x)))) ctx #f #f)
-                     ;(format "~a:=~a" (car x) (show-term (cdr x) ctx #f #f))
-                     (show (car x)))
-                 (show t)))]
-          [(? atomic? t)
-           (format "~v" t)]
-          [(cons l (cons (list 'origins o) ts))
-           (format "~a(~a)"
-                   (show-origins o verbose)
-                   (string-join (cons (show l)
-                                      (map rec ts)) " "))]
-          [(? list? ts)
-           (format "(^ ~a)" (string-join (map rec ts) " "))]))
-      (rec t))
-    show-term)
-
-  (define expand-pattern expand)
-  
-  (define-syntax-rule (pattern->redex-term l p ctx)
-    ((redex-language-join l) ((language-pattern->term l) p) ctx))
-  
 
   #|
      redex-language ctx <: language redex-term ctx:
@@ -110,17 +35,52 @@
        split :: redex-term -> (cons redex-term ctx)
                   e.g. prog -> (cons expr store)
                   e.g. x -> (cons x unit)
-       lookup-var :: symbol -> ctx -> redex-term
+       lookup-var :: symbol -> ctx -> (cons symbol redex-term)
   |#
   (struct redex-language language
     (red join split))
   
+  (define (atomic? x)
+    (or (symbol? x)
+        (string? x)
+        (boolean? x)
+        (number? x)))
+  
+  (define (term->redex t)
+    (match t
+      [(term-list os (cons l ts))
+       (cons l (cons (list 'origins os) (map term->redex ts)))]
+      [(? atomic? t)
+       t]))
+  
   (define (make-redex-language name lang red join split lookup-var)
+    
+    (define (redex->term t ctx [replace-vars #f] [recurse #f])
+      (define (rec t)
+        (redex->term t ctx replace-vars recurse))
+      (match t
+        [(? symbol? t)
+         (if replace-vars
+             (let* [[x (lookup-var t ctx)]]
+               (if x (if recurse
+                         (let* [[var (car x)]
+                                [val (redex->term (cdr x) ctx #f #f)]
+                                [y (unexpand-term val)]]
+                           (if y y (car x)))
+                         (car x))
+                   t))
+             t)]
+        [(? atomic? t)
+         t]
+        [(cons l (cons (list 'origins os) ts))
+         (term-list os (cons l (map rec ts)))]))
+    
     (redex-language name
-                    pattern->term
-                    term->pattern
+                    term->redex
+                    redex->term
                     (λ (t ctx) (map split (apply-reduction-relation red (join t ctx))))
-                    (make-show-term lookup-var)
+                    "Redex langs currently do not implement language-eval"
+                    (λ (t ctx [replace-vars #t] [recurse #t]) (show-term (redex->term t ctx replace-vars recurse)))
                     red
                     join
                     split))
@@ -128,25 +88,26 @@
   (define (macro-aware-redex-step l t)
     (let [[split (redex-language-split l)]
           [join (redex-language-join l)]
-          [pattern->term (language-pattern->term l)]
-          [term->pattern (language-term->pattern l)]
-          [show-term (language-show-term l)]]
-      (display (format "~a\n" (show-term (car (split t)) (cdr (split t)))))
+          [term->expr (language-term->expr l)]
+          [expr->term (language-expr->term l)]
+          [show-expr (language-show-expr l)]]
+
+      (display (format "~a\n" (show-expr (car (split t)) (cdr (split t)))))
     (let [[ps (macro-aware-step
                l
-               (unexpand (term->pattern (car (split t))))
+               (unexpand-term (expr->term (car (split t))))
                (cdr (split t)))]]
       (if (empty? ps) #f
-          (join (pattern->term (expand (caar ps))) (cdar ps))))))
+          (join (term->expr (expand-term (caar ps))) (cdar ps))))))
 
   (define-struct hidden ())
   
   (define (format-term-for-traces l t)
-    (let [[term->pattern (language-term->pattern l)]
+    (let [[expr->term (language-expr->term l)]
           [split (redex-language-split l)]]
       (if (not t) "END"
-          (let [[u (unexpand (term->pattern (car (split t))))]]
-            (if (not u) (hidden) (pattern->sexpr u))))))
+          (let [[u (unexpand-term (expr->term (car (split t))))]]
+            (if (not u) (hidden) (term->sexpr u))))))
 
   (define-syntax-rule
     (macro-aware-traces l red t rest ...)

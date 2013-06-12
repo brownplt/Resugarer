@@ -204,7 +204,7 @@
         [expr (third top)]]
     (cons expr store)))
 
-(define (lookup-var var store show)
+(define (lookup-var var store)
   (define (lookup var bindings)
     (match bindings
       [(list) #f]
@@ -215,22 +215,23 @@
 (define MAMin
   (make-redex-language "Min" Min red join split lookup-var))
 
-(define-syntax-rule (test-eval p)
+(define-syntax-rule (test-eval t)
   (begin
     (for-each (λ (x) (display (format "~a\n" x)))
-              (macro-aware-eval MAMin (make-pattern p) empty-store))
+              (macro-aware-eval MAMin (make-term t) empty-store))
     (display "\n")))
 
-(define-syntax-rule (make-term p)
-  (pattern->redex-term MAMin (expand-pattern (make-pattern p)) empty-store))
+(define-syntax-rule (make-redex-term t)
+  (term->redex (expand-term (make-term t)) empty-store))
 
 (define marred
   (reduction-relation Min
     (--> p ,(macro-aware-redex-step MAMin (term p)))))
 
 (define-syntax-rule (test-trace t)
-  (macro-aware-traces MAMin marred (make-term t)))
+  (macro-aware-traces MAMin marred (make-redex-term t))) ;make-term?
 
-(define-syntax-rule (test-expand p)
-  (show-pattern (expand-pattern (make-pattern p))))
- )
+(define-syntax-rule (test-expand t)
+  (show-term (expand-term (make-term t))))
+
+)

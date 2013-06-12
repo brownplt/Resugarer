@@ -88,6 +88,11 @@
     (and (>= (string-length string) (string-length prefix))
          (string=? prefix (substring string 0 (string-length prefix)))))
   
+  ; symbol-prefix? : string -> symbol -> bool
+  ; Does 'symbol' begin with 'prefix'?
+  (define (symbol-prefix? prefix symbol)
+    (and (symbol? symbol) (string-prefix? prefix (symbol->string symbol))))
+  
   ; show : any -> string
   (define (show x) (format "~a" x))
   

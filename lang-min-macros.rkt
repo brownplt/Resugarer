@@ -31,7 +31,7 @@
    (apply (lambda x b) e)])
 
 (define-macro Or
-  [(Or x) x]
+  [(Or x) (begin x)]
   [(Or x xs ...)
    (apply (lambda t (if t t (Or xs ...))) x)])
 ;   (Let t x (if t t (Or xs ...)))])
@@ -79,7 +79,7 @@
                b))])
 
 (define-macro Cond
-  [(Cond [^ $else x])    x]
+  [(Cond [^ $else x])   (begin x)] ; begin required so that a step is shown!
   [(Cond [^ x y])       (if x y (+ 0 0))]
   [(Cond [^ x y] z ...) (if x y (Cond z ...))])
 
@@ -175,18 +175,18 @@
 
 (define-macro CpsM
   [(CpsM ("lambda" x y))
-   (lambda x (lambda k_ (CpsT y k_)))]
+   (! lambda x (lambda k_ (CpsT y k_)))]
   [(CpsM x)
    x])
 
 (define-macro CpsT
   [(CpsT ("apply" x y) k)
-   (CpsT x (lambda f_ (CpsT y (lambda e_ (apply f_ e_ k)))))]
+   (! CpsT x (lambda f_ (CpsT y (lambda e_ (apply f_ e_ k)))))]
   [(CpsT x k)
-   (apply k (CpsM x))])
+   (! apply k (CpsM x))])
 
 (define-macro Cps
-  [(Cps x) (CpsT x (lambda h_ h_))])
+  [(Cps x) (Let halt (lambda h_ h_) (CpsT x halt))])
 
 (define-macro CpsM*
   [(CpsM* ("lambda" v e))
@@ -239,7 +239,7 @@
                   (eq? x "")]]
      (! apply init input))])
 
-(test-eval
+#;(test-eval
  (Letrec run-fun
    (RunBody)
    (Lets [^ [^ an-Engine
@@ -249,8 +249,7 @@
          (run run-fun an-Engine "more" the-input))))
 
 (set-debug-steps! #f)
-(set-debug-tags! #t)
-(set-debug-store! #t)
+(set-debug-tags! #f)
 
 (test-eval (+ 1 2))
 (test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
@@ -261,30 +260,12 @@
 (test-eval (Letrecs [^ [^ x 1]] x))
 (test-eval (Letrecs [^ [^ x 1] [^ y 2]] (+ x y)))
 (test-eval (Cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ $else (+ 5 6)]))
+(test-eval (+ 1 (Cond [^ #f (+ 1 2)] [^ (Or #f #t) (+ 2 3)])))
 (test-eval (Or (eq? 1 2) (eq? 2 2) (eq? 3 2)))
 (test-eval (Lets [^ [^ [^ f x] (+ x 1)]] (apply f 3)))
-;(test-eval (Cps ("apply" ("lambda" x (+ x 1)) 3)))
-;(test-eval (CpsT ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
-;                                   ("lambda" x (+ x 1)))
-;                          (+ 1 2)) (lambda h h)))
-;(test-eval (CpsT ("apply" ("lambda" f ("apply" f 1)) ("lambda" x (+ x 1)))
-;                 (lambda h h)))
-;(test-eval (CpsK* ("apply" ("lambda" f ("apply" f 1)) ("lambda" x (+ x 1)))
-;                 (lambda h h)))
-
-;(test-eval (Cdavr "cd"))
-;(test-eval (Cdavr "cadr"))
 (test-eval (Cdavr "cadr"))
 (test-eval (Cdavr "cdad"))
-
 #|
-(test-eval (apply (Fischer ("apply" ("lambda" x (+ x 1)) 3)) (lambda h h)))
-(test-eval (apply (Fischer ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
-                                   ("lambda" x (+ x 1)))
-                          (+ 1 2))) (lambda h h)))
-|#
-;(test-eval (std-Letrecs [^ [^ x 1]] x))
-
 (test-eval
  (Let M (Automaton
          init
@@ -294,7 +275,6 @@
                     [^ "r" $-> end]]
          [^ end $:  "accept"])
    (apply M "cadr")))
-
 (test-eval
  (Let M (Automaton
          init
@@ -304,6 +284,24 @@
                     [^ "r" $-> end]]
          [^ end $:  "accept"])
    (apply M "cdad")))
+|#
+
+;(test-eval (Cps ("apply" ("lambda" x (+ x 1)) 3)))
+;(test-eval (CpsT ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
+;                                   ("lambda" x (+ x 1)))
+;                          (+ 1 2)) (lambda h h)))
+;(test-eval (Cps ("apply" ("lambda" f ("apply" f 1)) ("lambda" x (+ x 1)))))
+;(test-eval (CpsK* ("apply" ("lambda" f ("apply" f 1)) ("lambda" x (+ x 1)))
+;                  (lambda h h)))
+;(test-eval (Lets [^ [^ x 1] [^ y (+ 1 2)]] (+ x y)))
+
+#|
+(test-eval (apply (Fischer ("apply" ("lambda" x (+ x 1)) 3)) (lambda h h)))
+(test-eval (apply (Fischer ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
+                                   ("lambda" x (+ x 1)))
+                          (+ 1 2))) (lambda h h)))
+|#
+;(test-eval (std-Letrecs [^ [^ x 1]] x))
 
 #|
 (test-eval

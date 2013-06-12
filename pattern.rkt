@@ -1,9 +1,10 @@
 (module pattern-untyped racket
   (provide
-   sexpr->pattern pattern->sexpr
+   sexpr->pattern pattern->sexpr make-pattern
+   term->pattern pattern->term term-list make-term show-term term->sexpr
    unify minus substitute
    attempt-unification unification-failure?
-   nominal?
+   nominal? strip-tags
    (struct-out pvar) (struct-out literal) (struct-out constant)
      (struct-out plist) (struct-out ellipsis)
    (struct-out inter-list) (struct-out inter-ellipsis)
@@ -13,7 +14,6 @@
    ; testing:
    show-pattern
    inter-list-envs free-vars replace bind empty-env singleton-env)
-  
   (require "utility.rkt")
   (require racket/string)
   (require racket/set)
@@ -48,7 +48,7 @@
   ;        | o-eval
   ;        | o-macro macro-name expansion-nonce macro-case
   
-  (struct o-macro (m i c) #:transparent)
+  (struct o-macro (m c) #:transparent)
   (struct o-branch () #:transparent)
   
   ; Inter : Pattern
@@ -78,6 +78,15 @@
   ;;;;;;;;;;;;
   ;; Syntax ;;
   ;;;;;;;;;;;;
+
+  #|  Syntax Guide:
+      * Literals (e.g. else) are prefixed with '$'.
+      * Macros start with a capital letter.
+      * Variables and Constants start with lowercase letters,
+          and are distinguished by context.
+      * "syntax parens" (e.g. (let ((x 1)) x)) are marked with '^'
+      * '!' means "Feel free to display the following subexpression to the user.
+  |#
   
   ; Compile a racket-like macro pattern into a Pattern.
   ; Guarantees that no ellipses pattern is variableless.
@@ -136,28 +145,37 @@
              [(list ps ...)
               (plist (t-apply) (map rec ps))]))]))
   
-  ; Ignores tags!
-  (define (pattern->sexpr x)
+  (define-syntax-rule (make-pattern t)
+    (sexpr->pattern 't (list) #f))
+  
+  (define (pattern->sexpr x [keep-tags? #f])
+    (define (rec x) (pattern->sexpr x keep-tags?))
     (define (type->sexprs t)
       (match t
         [(t-macro m) (list m)]
         [(t-syntax) (list '^)]
         [_ (list)]))
+    (define (orig->sexpr o)
+      (match o
+        [(o-branch) 'o-branch]
+        [(o-macro m c) (list 'o-macro m c)]))
     (match x
-      [(tag x _)           (pattern->sexpr x)]
+      [(tag x o)           (if keep-tags?
+                               (list 'tag (rec x) (orig->sexpr o))
+                               (rec x))]
       [(pvar v)            v]
       [(literal x)         x]
       [(constant x)        x]
       [(plist t elems)     (append (type->sexprs t)
-                                   (map pattern->sexpr elems))]
+                                   (map rec elems))]
       [(ellipsis t l m r)  (append (type->sexprs t)
-                                   (map pattern->sexpr l)
-                                   (list (pattern->sexpr m)
+                                   (map rec l)
+                                   (list (rec m)
                                          '...)
-                                   (map pattern->sexpr r))]))
+                                   (map rec r))]))
   
-  (define (show-pattern p)
-    (let [[str (format "~v" (pattern->sexpr p))]]
+  (define (show-pattern p [keep-tags? #f])
+    (let [[str (format "~v" (pattern->sexpr p keep-tags?))]]
       (if (string-prefix? "'" str)
           (substring str 1)
           str)))
@@ -273,13 +291,11 @@
       (and (tag? t) (equal? (tag-origin t) o)))
     
     (define (strip-origin x y)
-      (define (strip x)
-        (if (tag? x) (strip (tag-term x)) x))
       ; This conditional is very delicate, and probably wrong.
-      (cond [(nominal? x)           (strip x)]
+      (cond [(nominal? x)           (strip-tags x)]
             [(pvar? y)              x]
-            [(not origin)           (strip x)]
-            [(has-origin? x origin) (strip x)]
+            [(not origin)           (strip-tags x)]
+            [(has-origin? x origin) (strip-tags x)]
             [else                   (fail)]))
       
 ;      (match* ((strip-origin x y) y)
@@ -323,6 +339,8 @@
                   (ellipsis-minuses t l1:r m1 r1:l m2)
                   (minuses r1:r r2)))))]
         [((tag x (o-branch)) (tag y (o-branch)))
+         (minus x y)]
+        [((tag x (o-macro m n)) (tag y (o-macro m n)))
          (minus x y)]
         [(_ _) (fail)])))
   
@@ -406,6 +424,46 @@
                                           ellipsis-bindings)))])))
   
   
+  ;;;;;;;;;;;
+  ;; Terms ;;
+  ;;;;;;;;;;;
+  
+  ; A helpful intermediate format for closed patterns.
+  
+  (struct term-list (tags terms) #:transparent)
+  
+  (define (pattern->term p)
+    (match p
+      [(constant c)           c]
+      [(literal l)            l]
+      [(plist (t-apply) ps)   (term-list (list) (map pattern->term ps))]
+      [(plist (t-syntax) ps)  (term-list (list) (cons '^ (map pattern->term ps)))]
+      [(plist (t-macro m) ps) (term-list (list) (cons m (map pattern->term ps)))]
+      [(tag p o)              (match (pattern->term p)
+                                [(term-list os ps) (term-list (cons o os) ps)]
+                                [t t])])) ; Why does this happen
+                                ;[_ (fail "pattern->term: Only plists may be wrapped in tags. ~a" p)])]))
+  
+  (define (term->pattern t)
+    (match t
+      [(term-list (list) (cons (? symbol-upper-case? t) ts))
+       (plist (t-macro t) (map term->pattern ts))]
+      [(term-list (list) (cons '^ ts))      (plist (t-syntax) (map term->pattern ts))]
+      [(term-list (list) ts)                (plist (t-apply) (map term->pattern ts))]
+      [(term-list (cons o os) ts)           (tag (term->pattern (term-list os ts)) o)]
+      [(? (λ (x) (symbol-prefix? "$" x)) l) (literal l)]
+      [x                                    (constant x)]))
+  
+  (define-syntax-rule (make-term t)
+    (pattern->term (make-pattern t)))
+  
+  (define (show-term t)
+    (show-pattern (term->pattern t)))
+  
+  (define (term->sexpr t)
+    (pattern->sexpr (term->pattern t)))
+  
+  
   ;;;;;;;;;;;;;;;;;;
   ;; Environments ;;
   ;;;;;;;;;;;;;;;;;;
@@ -444,6 +502,10 @@
        (set-union (set-unions (map free-vars l))
                   (free-vars m)
                   (set-unions (map free-vars r)))]))
+  
+  ; strip-tags : Pattern -> Pattern
+  (define (strip-tags x)
+    (if (tag? x) (strip-tags (tag-term x)) x))
   
   ; occurs? : Var Pattern -> Bool
   (define (occurs? v x) (set-member? (free-vars x) v))

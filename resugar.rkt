@@ -5,8 +5,8 @@
   (require "macro.rkt")
   (provide
    define-macro
-   make-pattern test-expand
-   language language-name language-pattern->term language-term->pattern language-step language-show-term
+   make-term test-expand term-list expand-term unexpand-term show-term term->sexpr
+   language language-name language-expr->term language-term->expr language-step language-show-expr
    macro-aware-step
    macro-aware-eval
    macro-aware-eval*
@@ -18,89 +18,95 @@
   (define (set-debug-steps! x) (set! DEBUG_STEPS x))
   
   #|
-     A language is free to work over whatever sort of terms and contexts it wants.
-     It must take evaluation steps over (term, context) pairs.
+     A language is free to work over whatever sort of exprs and contexts it wants.
+     It must take evaluation steps over (expr, context) pairs.
      Contexts are hidden and do not get unexpanded.
-     pattern->term and term->pattern *must* be inverses of each other,
+     term->expr and expr->term *must* be inverses of each other,
        or else the semantic properties of the stepper are lost.
 
-     Language term ctx {
+     Language expr ctx {
        name :: string
-       pattern->term :: pattern -> term
-       term->pattern :: term -> pattern
-       step :: term -> ctx -> list (cons term ctx)
-       show-term :: term -> ctx -> string      ; for debugging
+       term->expr :: term -> expr
+       expr->term :: expr -> ctx -> term
+       step :: expr -> ctx -> list (cons expr ctx)
+       eval :: 
+       show-expr :: expr -> ctx -> string      ; for debugging
      }
  
                                  init-ctx
                                     ↓
-     pattern  ===>  term  --->  (term, ctx)
+     pattern  ===>  term  --->  (expr, ctx)
                                     ↓
-     pattern  <===  term  <---  (term, ctx)
+     pattern  <===  term  <---  (expr, ctx)
                                     ↓
                                    ...
      (===> expansion/unexpansion)
-     (---> just pairing/unpairing)
+     (---> just pairing/unpairing and term<->expr conversion)
      (↓    evaluation step)
   |#
   
   (struct language
-    (name pattern->term term->pattern step show-term))
+    (name term->expr expr->term step eval show-expr))
   
-  (define-syntax-rule (make-pattern t)
-    (sexpr->pattern 't (list) #f))
+  (define-syntax-rule (test-expand t)
+    (pattern->term (expand (make-term t))))
   
-  (define-syntax-rule (test-expand p)
-    (expand (make-pattern p)))
+  (define-syntax-rule (expand-term t)
+    (pattern->term (expand (term->pattern t))))
   
-  ; macro-aware-step :: Language t c -> pattern -> c -> list (cons pattern c)
-  (define (macro-aware-step lang p ctx)
-    (let [[term->pattern (language-term->pattern lang)]
-          [pattern->term (language-pattern->term lang)]
-          [show-term (language-show-term lang)]
+  (define-syntax-rule (unexpand-term t)
+    (let [[q (unexpand (term->pattern t))]]
+      (if q (pattern->term q) #f)))
+  
+  ; macro-aware-step :: Language t c -> term -> c -> list (cons term c)
+  (define (macro-aware-step lang t ctx)
+    (let [[expr->term (language-expr->term lang)]
+          [term->expr (language-term->expr lang)]
+          [show-expr (language-show-expr lang)]
           [step (language-step lang)]]
       
       (when DEBUG_STEPS
-        (display (show-term (pattern->term p) ctx)) (display "\n\n"))
-        ;(display (show-pattern p)) (display "\n"))
+        (display (show-expr (term->expr t) ctx))
+        (newline) (newline))
       
-      (define (show-skip t ctx)
-        (display (format "SKIP ~a\n\n" (show-term t ctx DEBUG_TAGS))))
+      (define (show-skip e ctx)
+        (display (format "SKIP ~a\n\n" 
+                         (show-expr e ctx #t DEBUG_TAGS))))
       
       (define (catmap f xs)
         (append* (map f xs)))
       
-      (define (new-step t ctx)
-        (catmap resugar (step t ctx)))
+      (define (new-step e ctx)
+;        (display "!") (display e) (display " ") (display ctx) (newline)
+        (catmap resugar (step e ctx)))
       
       (define (resugar prog)
-        (let* [[t (car prog)]
+        (let* [[e (car prog)]
                [ctx (cdr prog)]
+               [t (expr->term e ctx)]
                [p (unexpand (term->pattern t))]]
           (if p
-              (list (cons p ctx))
-              (begin (when DEBUG_STEPS (show-skip t ctx))
-                     (new-step t ctx)))))
+              (list (cons (pattern->term p) ctx))
+              (begin (when DEBUG_STEPS (show-skip e ctx))
+                     (new-step e ctx)))))
       
-      (new-step (pattern->term (expand p)) ctx)))
+      (new-step (term->expr (expand-term t)) ctx)))
   
-  ; macro-aware-eval :: Language t c -> pattern -> c -> list (cons pattern c)
-  (define (macro-aware-eval lang p ctx)
-    (define (rec lang p ctx)
-      (let [[next-progs (macro-aware-step lang p ctx)]
-            [show-term (language-show-term lang)]
-            [pattern->term (language-pattern->term lang)]]
-        (cons (show-term (pattern->term p) ctx)
+  ; macro-aware-eval :: Language t c -> term -> c -> list (cons term c)
+  (define (macro-aware-eval lang t ctx)
+    (define (rec lang t ctx)
+      (let [[next-progs (macro-aware-step lang t ctx)]
+            [show-expr (language-show-expr lang)]
+            [term->expr (language-term->expr lang)]]
+        (cons (show-expr (term->expr t) ctx)
               (if (empty? next-progs)
                   (list)
                   (rec lang (caar next-progs) (cdar next-progs))))))
-    (deduplicate (rec lang p ctx)))
+    (deduplicate (rec lang t ctx)))
   
-  ; macro-aware-eval* : (pattern -> term)
-  ;                  -> (term -> (pattern -> void) -> void)
-  ;                  -> void
+  ; macro-aware-eval* : Language expr ctx -> pattern -> void
   ; A callback-based version of macro-aware-eval.
-  (define (macro-aware-eval* pattern->term steps p)
+  (define (macro-aware-eval* convert steps s)
     
     (define last #f)
     
@@ -109,17 +115,18 @@
         (display str) (newline)
         (set! last str)))
     
-    (define (show-step p)
-      (output-line (show-pattern p)))
+    (define (show-step t)
+      (output-line (show-term t)))
     
-    (define (show-skip p)
+    (define (show-skip t)
       (when DEBUG_STEPS
-        (output-line (format "SKIP: ~a" (show-pattern p)))))
+        (output-line (format "SKIP: ~a" (show-term t #;DEBUG_TAGS)))))
     
-    (define (callback p)
-      (let [[p* (unexpand p)]]
-        (if p* (show-step p*) (show-skip p))))
+    (define (callback t)
+      (let [[t2 (unexpand-term t)]]
+        (if t2 (show-step t2) (show-skip t))))
     
-    (steps (pattern->term (expand p)) callback))
-
+    (let [[t (expand-term s)]]
+      (callback t)
+      (steps (convert t) callback)))
 )
