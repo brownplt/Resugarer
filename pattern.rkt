@@ -433,6 +433,9 @@
   (struct term-list (tags terms) #:transparent)
   
   (define (pattern->term p)
+    (define tag-msg
+      (string-append "pattern->term: Only compound terms may be wrapped in tags. "
+                     "Perhaps try wrapping the inner macro's RHS in a 'begin' or other no-op. ~a"))
     (match p
       [(constant c)           c]
       [(literal l)            l]
@@ -441,8 +444,7 @@
       [(plist (t-macro m) ps) (term-list (list) (cons m (map pattern->term ps)))]
       [(tag p o)              (match (pattern->term p)
                                 [(term-list os ps) (term-list (cons o os) ps)]
-                                [t t])])) ; Why does this happen
-                                ;[_ (fail "pattern->term: Only plists may be wrapped in tags. ~a" p)])]))
+                                [_ (fail tag-msg (tag p o))])]))
   
   (define (term->pattern t)
     (match t

@@ -116,11 +116,15 @@
         (set! last str)))
     
     (define (show-step t)
-      (output-line (show-term t)))
+      (output-line (if DEBUG_TAGS
+                       (format "~v\n" (term->pattern t))
+                       (show-term t))))
     
     (define (show-skip t)
       (when DEBUG_STEPS
-        (output-line (format "SKIP: ~a" (show-term t #;DEBUG_TAGS)))))
+        (output-line (format "SKIP: ~a" (if DEBUG_TAGS
+                                            (format "~v\n" (term->pattern t))
+                                            (show-term t))))))
     
     (define (callback t)
       (let [[t2 (unexpand-term t)]]

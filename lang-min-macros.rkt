@@ -12,10 +12,15 @@
 ; * cond         DONE
 ; * let          DONE
 ; * letrec       DONE?
-; * automata     DONE?
+; * automata     DONE
 ; * cps          NOT DONE
 ; * var lifting  NOT DONE
 ; * traffic/elevator/nonpl
+
+; Bugs:
+; * Sometimes a macro RHS must be wrapped in 'begin' for two reasons:
+;   - So that it's reduction shows as a step (otherwise, e.g. (or (+ 1 2)) -> 3)
+;   - So that a calling macro doesn't inadvertently tag a constant.
 
 
 (define-macro Thunk

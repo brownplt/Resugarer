@@ -31,6 +31,11 @@
   
   (define (pt/rec ctx term c_)
     (match term
+      ; (begin x)
+      [(term-list os_ (list 'begin x_))
+       (with-syntax [[ctx* ctx] [os* os_]]
+         (with-syntax [[x-eval* (pt/eval #'(λ (w) (ctx* (tlist (list . os*) 'begin w))) x_ c_)]]
+           #'x-eval*))]
       ; (+ x y)
       [(term-list os_ (list '+ x_ y_))
        (with-syntax [[(x-var* y-var*) (generate-temporaries #'(x y))]
@@ -131,14 +136,14 @@
      ((lambda (x) (Let [^ [^ xs es] ...] b)) e)])
   
   (define-macro Or
-    [(Or x) x]
+    [(Or x) (begin x)]
     [(Or x y ys ...)
      ((λ (t) (if t t (Or y ys ...))) x)])
   
   (define-macro Inc
     [(Inc x) (+ x 1)])
   
-  (set-debug-steps! #t)
+  (set-debug-steps! #f)
   (set-debug-tags! #f)
   
   (test-eval 3)
@@ -153,6 +158,6 @@
   (test-eval (Let [^ [^ x 1] [^ y (+ 1 2)]] (+ x y)))
   (test-eval (Or #f (+ 1 2)))
   (test-eval (Inc (+ 1 2)))
+  (test-eval (Inc (+ (Inc 1) (Inc 2))))
   (test-eval (+ 1 (Cond [^ #f (+ 1 2)] [^ (Or #f #t) (+ 2 3)])))
-  (test-eval (+ 1 (Cond [^ #f (+ 1 2)] [^ #t (+ 2 3)])))
 )
