@@ -38,7 +38,7 @@
 (define-macro Or
   [(Or x) (begin x)]
   [(Or x xs ...)
-   (apply (lambda t (if t t (Or xs ...))) x)])
+   (apply (lambda t (if t t (! Or xs ...))) x)])
 ;   (Let t x (if t t (Or xs ...)))])
 
 (define-macro Letrec
@@ -61,21 +61,21 @@
   [(Lets [^ [^ [^ f x] e]] b)
    (apply (lambda f b) (lambda x e))]
   [(Lets [^ [^ [^ f x] e] [^ xs es] ...] b)
-   (apply (lambda f (Lets [^ [^ xs es] ...] b)) (lambda x e))]
+   (apply (lambda f (! Lets [^ [^ xs es] ...] b)) (lambda x e))]
   [(Lets [^ [^ x e]] b)
    (apply (lambda x b) e)]
   [(Lets [^ [^ x e] [^ xs es] ...] b)
-   (apply (lambda x (Lets [^ [^ xs es] ...] b)) e)])
+   (apply (lambda x (! Lets [^ [^ xs es] ...] b)) e)])
 
 (define-macro Sets
   [(Sets [^ [^ [^ f x] e]] b)
    (begin (set! f (lambda x e)) b)]
   [(Sets [^ [^ [^ f x] e] xs ...] b)
-   (begin (set! f (lambda x e)) (Sets [^ xs ...] b))]
+   (begin (set! f (lambda x e)) (! Sets [^ xs ...] b))]
   [(Sets [^ [^ x e]] b)
    (begin (set! x e) b)]
   [(Sets [^ [^ x e] xs ...] b)
-   (begin (set! x e) (Sets [^ xs ...] b))])
+   (begin (set! x e) (! Sets [^ xs ...] b))])
 
 (define-macro Letrecs
   [(Letrecs [^ [^ x e] ...] b)
@@ -86,7 +86,7 @@
 (define-macro Cond
   [(Cond [^ $else x])   (begin x)] ; begin required so that a step is shown!
   [(Cond [^ x y])       (if x y (+ 0 0))]
-  [(Cond [^ x y] z ...) (if x y (Cond z ...))])
+  [(Cond [^ x y] z ...) (if x y (! Cond z ...))])
 
 ;(define-macro std-Letrecs () (Let Lets Thunk Force)
 ;  [(std-Letrec [^ [^ var init] ...] body)
@@ -123,37 +123,6 @@
     ...)
    (Letrecs [^ [^ state (ProcessState response ...)] ...]
      init-state)])
-
-#|  Totally Bonkers |#
-
-(define-macro EnginePart
-  [(EnginePart "accept")
-   (lambda input #t)]
-  [(EnginePart [^ label $-> target] ...)
-   (lambda input
-     (Cond
-       [^ (eq? input label) target]
-       ...
-       [^ #t #f]))])
-
-(define-macro Engine
-  [(Engine [^ state $: response ...] ...)
-   (Lambdas [^ s i]
-     (Cond [^ (eq? s state) (apply (EnginePart response ...) i)]
-           ...))])
-
-(define-macro Run
-  [(Run fun Engine state inputs)
-   (apply fun Engine state inputs)])
-
-(define-macro RunBody 
-  [(RunBody)
-   (Lambdas [^ eng state inputs]
-      (Let next (apply eng state (first inputs))
-        (Cond [^ (eq? next #f) #f]
-              [^ (eq? next #t) #t]
-              [^ #t (Let inputs (rest inputs)
-                      (run run-fun eng next inputs))])))])
 
 (define-macro List
   [(List) empty]
@@ -270,7 +239,7 @@
 (test-eval (Lets [^ [^ [^ f x] (+ x 1)]] (apply f 3)))
 (test-eval (Cdavr "cadr"))
 (test-eval (Cdavr "cdad"))
-#|
+(test-eval (Letrecs [^ [^ y x] [^ x 1]] (+ x y)))
 (test-eval
  (Let M (Automaton
          init
@@ -289,7 +258,6 @@
                     [^ "r" $-> end]]
          [^ end $:  "accept"])
    (apply M "cdad")))
-|#
 
 ;(test-eval (Cps ("apply" ("lambda" x (+ x 1)) 3)))
 ;(test-eval (CpsT ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))

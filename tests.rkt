@@ -68,6 +68,23 @@
 (test-show (x y x ... y x) "(x y x ... y x)")
 (test-show (() (() (x))) "(() (() (x)))")
 
+
+;;;;;;;;;;;
+;; Terms ;;
+;;;;;;;;;;;
+
+(check-equal? (term->pattern (term-id (list 'o1 'o2) (term-list (list) (list 1 "two"))))
+              (tag (tag (plist (t-apply) (list (constant 1) (constant "two"))) 'o2) 'o1))
+
+(define-syntax-rule (check-term<->pattern p)
+  (check-equal? (make-pattern p) (term->pattern (pattern->term (make-pattern p)))))
+
+(define-syntax-rule (check-pattern<->term t)
+  (check-equal? (make-term t) (pattern->term (term->pattern (make-term t)))))
+
+(check-term<->pattern (M $x "y" (Q z)))
+(check-pattern<->term (M $x y (Q "z")))
+
 ;;;;;;;;;;;;;;;;;
 ;; Unification ;;
 ;;;;;;;;;;;;;;;;;

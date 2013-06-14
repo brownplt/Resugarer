@@ -5,7 +5,8 @@
   (require "macro.rkt")
   (provide
    define-macro
-   make-term test-expand term-list expand-term unexpand-term show-term term->sexpr
+   make-term test-expand term-list term-id expand-term unexpand-term show-term term->sexpr
+   could-not-unexpand?
    language language-name language-expr->term language-term->expr language-step language-show-expr
    macro-aware-step
    macro-aware-eval
@@ -49,14 +50,15 @@
     (name term->expr expr->term step eval show-expr))
   
   (define-syntax-rule (test-expand t)
-    (pattern->term (expand (make-term t))))
+    (expand-term (make-term t)))
   
   (define-syntax-rule (expand-term t)
     (pattern->term (expand (term->pattern t))))
   
+  (struct could-not-unexpand ()); because unexpand can return #f, which is a valid term :-(
   (define-syntax-rule (unexpand-term t)
     (let [[q (unexpand (term->pattern t))]]
-      (if q (pattern->term q) #f)))
+      (if q (pattern->term q) (could-not-unexpand))))
   
   ; macro-aware-step :: Language t c -> term -> c -> list (cons term c)
   (define (macro-aware-step lang t ctx)
@@ -108,7 +110,7 @@
   ; A callback-based version of macro-aware-eval.
   (define (macro-aware-eval* convert steps s)
     
-    (define last #f)
+    (define last 42)
     
     (define (output-line str)
       (when (not (equal? str last))
@@ -116,11 +118,13 @@
         (set! last str)))
     
     (define (show-step t)
+      ;(display "show-step\n")
       (output-line (if DEBUG_TAGS
                        (format "~v\n" (term->pattern t))
                        (show-term t))))
     
     (define (show-skip t)
+      ;(display "show-skip\n")
       (when DEBUG_STEPS
         (output-line (format "SKIP: ~a" (if DEBUG_TAGS
                                             (format "~v\n" (term->pattern t))
@@ -128,7 +132,9 @@
     
     (define (callback t)
       (let [[t2 (unexpand-term t)]]
-        (if t2 (show-step t2) (show-skip t))))
+        (if (could-not-unexpand? t2)
+            (show-skip t)
+            (show-step t2))))
     
     (let [[t (expand-term s)]]
       (callback t)

@@ -66,7 +66,7 @@
                          (let* [[var (car x)]
                                 [val (redex->term (cdr x) ctx #f #f)]
                                 [y (unexpand-term val)]]
-                           (if y y (car x)))
+                           (if (could-not-unexpand? y) (car x) y))
                          (car x))
                    t))
              t)]
@@ -107,7 +107,7 @@
           [split (redex-language-split l)]]
       (if (not t) "END"
           (let [[u (unexpand-term (expr->term (car (split t))))]]
-            (if (not u) (hidden) (term->sexpr u))))))
+            (if (could-not-unexpand? u) (hidden) (term->sexpr u))))))
 
   (define-syntax-rule
     (macro-aware-traces l red t rest ...)

@@ -1,7 +1,7 @@
 (module pattern-untyped racket
   (provide
    sexpr->pattern pattern->sexpr make-pattern
-   term->pattern pattern->term term-list make-term show-term term->sexpr
+   term->pattern pattern->term term-list term-id make-term show-term term->sexpr
    unify minus substitute
    attempt-unification unification-failure?
    nominal? strip-tags
@@ -69,7 +69,7 @@
       [(plist (t-macro _) _)        #f]
       [(plist (t-value) _)          #t]
       [(ellipsis (t-syntax) _ _ _)  #t]
-      [(ellipsis (t-macro _) _ _ _) #t]
+      [(ellipsis (t-macro _) _ _ _) #f]
       [(ellipsis (t-value) _ _ _)   #t]
       [(constant _)                 #t] ; TODO: tag constants!
       [_                            #f]))
@@ -114,8 +114,12 @@
     (define (const-like? sym)
       (or (and (symbol-lower-case? sym) (not (var-like? sym)))
           (and (symbol? sym) (not (symbol-lower-case? sym)))))
+    (define (marked-with-symbol? l s)
+      (and (list? l) (not (empty? l)) (symbol? (car l)) (symbol=? (car l) s)))
     (define (transparency-marked? l)
-      (and (list? l) (not (empty? l)) (symbol? (car l)) (symbol=? (car l) '!)))
+      (marked-with-symbol? l '!))
+    (define (local-transparency-marked? l)
+      (marked-with-symbol? l '!!))
     (define (add-tag p)
       (if (and opaque (not (nominal? p)))
           (tag p (o-branch))
@@ -430,12 +434,13 @@
   
   ; A helpful intermediate format for closed patterns.
   
+  ; term ::= term-list listof(tag) listof(term)
+  ;        | term-id term
+  ;        | symbol | number | ...
   (struct term-list (tags terms) #:transparent)
+  (struct term-id (tags term) #:transparent) ; The identity function; useful only for its tags
   
   (define (pattern->term p)
-    (define tag-msg
-      (string-append "pattern->term: Only compound terms may be wrapped in tags. "
-                     "Perhaps try wrapping the inner macro's RHS in a 'begin' or other no-op. ~a"))
     (match p
       [(constant c)           c]
       [(literal l)            l]
@@ -444,7 +449,8 @@
       [(plist (t-macro m) ps) (term-list (list) (cons m (map pattern->term ps)))]
       [(tag p o)              (match (pattern->term p)
                                 [(term-list os ps) (term-list (cons o os) ps)]
-                                [_ (fail tag-msg (tag p o))])]))
+                                [(term-id os p) (term-id (cons o os) p)]
+                                [x (term-id (list o) x)])]))
   
   (define (term->pattern t)
     (match t
@@ -453,6 +459,8 @@
       [(term-list (list) (cons '^ ts))      (plist (t-syntax) (map term->pattern ts))]
       [(term-list (list) ts)                (plist (t-apply) (map term->pattern ts))]
       [(term-list (cons o os) ts)           (tag (term->pattern (term-list os ts)) o)]
+      [(term-id (list) t)                   (term->pattern t)]
+      [(term-id (cons o os) t)              (tag (term->pattern (term-id os t)) o)]
       [(? (λ (x) (symbol-prefix? "$" x)) l) (literal l)]
       [x                                    (constant x)]))
   
