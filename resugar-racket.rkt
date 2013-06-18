@@ -5,10 +5,9 @@
   ; for a much cleaner presentation of the debugging approach.
 
   (define-struct Var (name value) #:transparent)
-  (define-struct PleaseYieldFunc (ctx))
-  (define-struct YieldedFunc (func))
-  (define-struct PleaseYieldTerm ())
-  (define-struct YieldedTerm (term))
+  (define-struct Func (term annot bare)
+    #:property prop:procedure
+    (λ (self . args) (apply (Func-bare self) args)))
   
   (define (atomic? t) (or (symbol? t)
                           (number? t)
@@ -21,22 +20,19 @@
   
   (define SHOW_PROC_NAMES #t)
   
-  ; A global table of our annotated functions,
-  ; to tell them apart from ordinary functions.
-  (define annotated-funcs (set))
-  (define (annotated-func f)
-    (when (not (set-member? annotated-funcs f))
-      (set! annotated-funcs (set-add annotated-funcs f)))
-    f)
-  
-  (define (call-annotated-func f ctx . args)
-    (if (set-member? annotated-funcs f)
-        (apply (f (PleaseYieldFunc ctx)) args)
+  (define (call-func f ctx . args)
+    (if (Func? f)
+        (apply ((Func-annot f) ctx) args)
         (apply f args)))
   
   (define (value->term x)
-    (cond [(and (procedure? x) (set-member? annotated-funcs x))
-           (x (PleaseYieldTerm))]
+    (cond [(Func? x)
+           (Func-term x)]
+          [(Var? x)
+           (let* [[name (Var-name x)]
+                  [val (Var-value x)]
+                  [u (unexpand-term (value->term val))]]
+             (if (could-not-unexpand? u) name u))]
           [(and SHOW_PROC_NAMES (procedure? x) (object-name x))
            (object-name x)]
           [else x]))
@@ -131,7 +127,9 @@
       ; value c
       [c_
        (with-syntax [[c* c_]]
-         #'(value->term c*))]))
+         (if (symbol? c_)
+             #'(value->term (Var 'c* c*))
+             #'(value->term c*)))]))
   
   
   ; The recursive part of pt/eval; instrument a term with emit statements to make a stepper
@@ -151,9 +149,9 @@
       [(term-list os_ (list 'begin x_ y_))
        (with-syntax [[os* os_]
                      [y* (adorn y_)]]
-         (with-syntax [[x* (pt/rec x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'begin (value->term __) y*)))) emit_)]
-                       [y* (pt/eval (term-list os_ (list 'begin y_)) ctx_ emit_)]]
-           #'(begin x* y*)))]
+         (with-syntax [[xe* (pt/rec x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'begin (value->term __) y*)))) emit_)]
+                       [ye* (pt/eval (term-list os_ (list 'begin y_)) ctx_ emit_)]]
+           #'(begin xe* ye*)))]
       
       ; (if x y z)
       [(term-list os_ (list 'if x_ y_ z_))
@@ -174,17 +172,12 @@
        (with-syntax [[(fv* cv*) (generate-temporaries #'(f c))]
                      [os* os_]
                      [v* v_]]
-         (with-syntax [[func-body* (pt/eval x_ #'(PleaseYieldFunc-ctx cv*) emit_)]
-                       [mime-func-body* (pt/eval x_ #'(unknown-ctx ctx*) emit_)]
+         (with-syntax [[body* (pt/eval x_ #'cv* emit_)]
                        [term* (adorn term_)]]
-           #'(annotated-func
-              (λ (cv*)
-                (cond [(PleaseYieldFunc? cv*)
-                       (λ (v*) func-body*)]
-                      [(PleaseYieldTerm? cv*)
-                       term*]
-                      [else
-                       ((λ (v*) mime-func-body*) cv*)])))))]
+           #'(let [[fv* (λ (cv*) (λ (v*) body*))]]
+               (Func term* ; for emitting
+                     fv* ; for internal calls
+                     (fv* (unknown-ctx ctx*))))))] ; for external calls
       
       ; (set! v x)
       [(term-list os_ (list 'set! (? symbol? v_) x_))
@@ -201,7 +194,7 @@
          (with-syntax [[f* (pt/rec f_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term __))))) emit_)]
                        [r* (pt/rec #'rv* ctx_ emit_)]]
            #'(let* [[fv* f*]
-                    [rv* (call-annotated-func fv* ctx*)]]
+                    [rv* (call-func fv* ctx*)]]
                r*)))]
       
       ; (f x)
@@ -215,7 +208,7 @@
                        [r* (pt/rec #'rv* ctx_ emit_)]]
            #'(let* [[fv* f*]
                     [xv* x*]
-                    [rv* (call-annotated-func fv* ctx* xv*)]]
+                    [rv* (call-func fv* ctx* xv*)]]
                r*)))]
       
       ; (f x y)
@@ -232,7 +225,7 @@
            #'(let* [[fv* f*]
                     [xv* x*]
                     [yv* y*]
-                    [rv* (call-annotated-func fv* ctx* xv* yv*)]]
+                    [rv* (call-func fv* ctx* xv* yv*)]]
                r*)))]
       
       ; value x
@@ -247,6 +240,9 @@
   (define-syntax-rule (test-term t)
     (syntax->datum ((term->racket (make-term t)) emit)))
   
+  (define-syntax-rule (test-expand-term t)
+    (syntax->datum ((term->racket (expand-term (make-term t))) emit)))
+  
   (define (steps term emit)
     (eval (term emit)))
   
@@ -254,7 +250,7 @@
     (macro-aware-eval* term->racket steps (make-term t)))
 
   (define-macro Cond
-    [(Cond [^ $else x])   x]
+    [(Cond [^ $else x])   (begin x)]
     [(Cond [^ x y])       (if x y (+ 0 0))]
     [(Cond [^ x y] z ...) (if x y (! Cond z ...))])
   
@@ -262,21 +258,21 @@
     [(Let [^ [^ [^ f x] e]] b)
      ((lambda (f) b) (lambda (x) e))]
     [(Let [^ [^ [^ f x] e] [^ xs es] ...] b)
-     ((lambda (f) (Let [^ [^ xs es] ...] b)) (lambda (x) e))]
+     ((lambda (f) (! Let [^ [^ xs es] ...] b)) (lambda (x) e))]
     [(Let [^ [^ x e]] b)
      ((lambda (x) b) e)]
     [(Let [^ [^ x e] [^ xs es] ...] b)
-     ((lambda (x) (Let [^ [^ xs es] ...] b)) e)])
+     ((lambda (x) (! Let [^ [^ xs es] ...] b)) e)])
   
   (define-macro Set
     [(Set [^ [^ [^ f x] e]] b)
      (begin (set! f (lambda (x) e)) b)]
     [(Set [^ [^ [^ f x] e] xs ...] b)
-     (begin (set! f (lambda (x) e)) (Set [^ xs ...] b))]
+     (begin (set! f (lambda (x) e)) (! Set [^ xs ...] b))]
     [(Set [^ [^ x e]] b)
      (begin (set! x e) b)]
     [(Set [^ [^ x e] xs ...] b)
-     (begin (set! x e) (Set [^ xs ...] b))])
+     (begin (set! x e) (! Set [^ xs ...] b))])
 
   (define-macro Letrec
     [(Letrec [^ [^ x e] ...] b)
@@ -287,7 +283,7 @@
   (define-macro Or
     [(Or x) (begin x)]
     [(Or x y ys ...)
-     ((λ (t) (if t t (Or y ys ...))) x)])
+     ((λ (t) (if t t (! Or y ys ...))) x)])
   
   (define-macro And
     [(And x) (begin x)]
@@ -295,7 +291,7 @@
      (if x (And y ys ...) #f)])
   
   (define-macro Just
-    [(Just x) x])
+    [(Just x) (begin x)])
   
   (define-macro Let1
     [(Let1 v x y)
@@ -320,7 +316,7 @@
                        (Let [^ [^ head (string-first x)]
                                [^ tail (string-rest x)]]
                             (Cond [^ (equal? "c" head) (! more tail)]
-                                  [^ $else #f])))]
+                                  [^ $else (begin #f)])))]
                 [^ [^ more x]
                    (if (equal? x "") #f
                        (Let [^ [^ head (string-first x)]
@@ -328,10 +324,33 @@
                             (Cond [^ (equal? "a" head) (! more tail)]
                                   [^ (equal? "d" head) (! more tail)]
                                   [^ (equal? "r" head) (! end tail)]
-                                  [^ $else #f])))]
+                                  [^ $else (begin #f)])))]
                 [^ [^ end x]
                    (equal? x "")]]
              (! init input))])
+  
+  (define-macro ProcessState
+    [(_ "accept")
+     (lambda (stream)
+       (Cond
+        [^ (equal? "" stream) #t]
+        [^ $else #f]))]
+    [(_ [^ label $-> target] ...)
+     (lambda (stream)
+       (if (equal? "" stream) #f
+           (Let [^ [^ head (string-first stream)]
+                   [^ tail (string-rest stream)]]
+                (Cond
+                 [^ (equal? label head) (! target tail)]
+                 ...
+                 [^ $else #f]))))])
+
+  (define-macro Automaton
+    [(_ init-state
+        [^ state $: response ...]
+        ...)
+     (Letrec [^ [^ state (ProcessState response ...)] ...]
+             init-state)])
   
   (set-debug-steps! #f)
   (set-debug-tags! #f)
@@ -371,17 +390,39 @@
   (test-eval (Or (zero? 3) (sub1 3)))
   (test-eval (And (not (zero? 3)) (sub1 3)))
   (test-eval (! + 1 2))
-  ;(test-eval (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f 0))]] (f 0))) ; loops!
-  (show-term (test-expand (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f 0))]] (f 0))))
-  #|
-  (test-eval (Letrec [^ [^ [^ is-even? n] (! Or (zero? n) (! is-odd? (sub1 n)))]
-                        [^ [^ is-odd? n] (! And (not (zero? n)) (! is-even? (sub1 n)))]]
+  (test-eval (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f (+ 0 0)))]] (f (+ 0 0)))) ; loops!
+  ;(test-term (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f 0))]] (f 0)))
+  ;(show-term (test-expand (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f 0))]] (f 0))))
+  
+  (test-eval (Letrec [^ [^ [^ is-even? n] (Or (zero? n) (is-odd? (sub1 n)))]
+                        [^ [^ is-odd? n] (And (not (zero? n)) (is-even? (sub1 n)))]]
                      (is-odd? 11)))
+  (test-eval (Let [^ [^ [^ f x] (+ x 1)]] (f 3)))
   (test-eval (begin (+ 1 2) (+ 3 4)))
   (test-eval ((λ (f) (begin (set! f (λ (x) x)) (f 4))) 3))
   
-  (test-eval (Cdavr "cadr"))
   (test-eval (Cdavr "cdad"))
+  (test-eval (Cdavr "cadr"))
+  (test-expand-term (Cdavr "cadr")) ; Huge!
+  (test-eval
+   (Let [^ [^ m (Automaton
+                 init
+                 [^ init $: [^ "c" $-> more]]
+                 [^ more $: [^ "a" $-> more]
+                            [^ "d" $-> more]
+                            [^ "r" $-> end]]
+                 [^ end $:  "accept"])]]
+        (m "cadr")))
+  (test-eval
+   (Let [^ [^ m (Automaton
+                 init
+                 [^ init $: [^ "c" $-> more]]
+                 [^ more $: [^ "a" $-> more]
+                            [^ "d" $-> more]
+                            [^ "r" $-> end]]
+                 [^ end $:  "accept"])]]
+        (m "cdad")))
+  #|
   (time (test-eval (Letrec [^ [^ [^ fib n]
                                  (if (Or (eq? n 0) (eq? n 1)) 1 (+ (fib (- n 1)) (fib (- n 2))))]]
                            (fib 25))))
