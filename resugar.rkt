@@ -60,6 +60,20 @@
     (let [[q (unexpand (term->pattern t))]]
       (if q (pattern->term q) (could-not-unexpand))))
   
+  (define (output-line str)
+    (display str) (newline))
+    
+  (define (show-step t)
+    (output-line (if DEBUG_TAGS
+                     (format "~v\n" (term->pattern t))
+                     (show-term t))))
+    
+  (define (show-skip t)
+    (when DEBUG_STEPS
+      (output-line (format "SKIP: ~a" (if DEBUG_TAGS
+                                          (format "~v\n" (term->pattern t))
+                                          (show-term t))))))
+  
   ; macro-aware-step :: Language t c -> term -> c -> list (cons term c)
   (define (macro-aware-step lang t ctx)
     (let [[expr->term (language-expr->term lang)]
@@ -68,18 +82,12 @@
           [step (language-step lang)]]
       
       (when DEBUG_STEPS
-        (display (show-expr (term->expr t) ctx))
-        (newline) (newline))
-      
-      (define (show-skip e ctx)
-        (display (format "SKIP ~a\n\n" 
-                         (show-expr e ctx #t DEBUG_TAGS))))
+        (show-step t))
       
       (define (catmap f xs)
         (append* (map f xs)))
       
       (define (new-step e ctx)
-;        (display "!") (display e) (display " ") (display ctx) (newline)
         (catmap resugar (step e ctx)))
       
       (define (resugar prog)
@@ -89,7 +97,7 @@
                [p (unexpand (term->pattern t))]]
           (if p
               (list (cons (pattern->term p) ctx))
-              (begin (when DEBUG_STEPS (show-skip e ctx))
+              (begin (when DEBUG_STEPS (show-skip e #;ctx))
                      (new-step e ctx)))))
       
       (new-step (term->expr (expand-term t)) ctx)))
@@ -110,33 +118,12 @@
   ; A callback-based version of macro-aware-eval.
   (define (macro-aware-eval* convert steps s)
     
-    (define last 42)
-    
-    (define (output-line str)
-      (when (not (equal? str last))
-        (display str) (newline)
-        (set! last str)))
-    
-    (define (show-step t)
-      ;(display "show-step\n")
-      (output-line (if DEBUG_TAGS
-                       (format "~v\n" (term->pattern t))
-                       (show-term t))))
-    
-    (define (show-skip t)
-      ;(display "show-skip\n")
-      (when DEBUG_STEPS
-        (output-line (format "SKIP: ~a" (if DEBUG_TAGS
-                                            (format "~v\n" (term->pattern t))
-                                            (show-term t))))))
-    
-    (define (callback t)
+    (define (emit t)
       (let [[t2 (unexpand-term t)]]
         (if (could-not-unexpand? t2)
             (show-skip t)
             (show-step t2))))
     
     (let [[t (expand-term s)]]
-      (callback t)
-      (steps (convert t) callback)))
+      (steps (convert t) emit)))
 )

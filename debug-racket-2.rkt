@@ -24,7 +24,7 @@
        `(if ,(Adorn x) ,(Adorn y) ,(Adorn z))]
       [(Adorn (f x))
        `(,(Adorn f) ,(Adorn x))]
-      [(Adorn c) (show c)]))
+      [(Adorn c) (value->patt c)]))
   
   (define-syntax-rule (Eval patt ctx)
     (begin (emit (Adorn patt) ctx)
@@ -37,8 +37,7 @@
   (define-struct PleaseYieldPatt ())
   (define-struct YieldedPatt (patt))
   
-  (define (show x)
-    ;x
+  (define (value->patt x)
     (if (procedure? x)
         (let [[p (with-handlers [[(λ (__unused) #t)
                                   (λ (__unused) x)]]
@@ -78,12 +77,16 @@
       [(Rec (f x) ctx)
        (let* [[f* (Rec f (λ (_) (ctx `(,(Adorn _) ,(Adorn x)))))]
               [x* (Rec x (λ (_) (ctx `(,(Adorn f*) ,(Adorn _)))))]]
-         (let [[func (with-handlers [[(λ (__unused) #t)
+         (let* [[func (with-handlers [[(λ (__unused) #t)
                                       (λ (__unused) f*)]]
-                       (f* (PleaseYieldFunc ctx)))]]
-           (if (YieldedFunc? func)
-               ((YieldedFunc-func func) x*) ; 'f' evaluated to an instrumented function
-               (f* x*))))] ; 'f' evaluated to an ordinary function
+                       (f* (PleaseYieldFunc ctx)))]
+               [result (if (YieldedFunc? func)
+                           ; 'f' evaluated to an instrumented function
+                           ((YieldedFunc-func func) x*)
+                           ; 'f' evaluated to an ordinary function
+                           (f* x*))]]
+           (Eval result ctx)))]
+      
       [(Rec x ctx)
        x]))
   
