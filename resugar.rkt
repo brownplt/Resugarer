@@ -53,11 +53,11 @@
     (expand-term (make-term t)))
   
   (define-syntax-rule (expand-term t)
-    (pattern->term (expand (term->pattern t))))
+    (pattern->term (expand-pattern (term->pattern t))))
   
   (struct could-not-unexpand ()); because unexpand can return #f, which is a valid term :-(
   (define-syntax-rule (unexpand-term t)
-    (let [[q (unexpand (term->pattern t))]]
+    (let [[q (unexpand-pattern (term->pattern t))]]
       (if q (pattern->term q) (could-not-unexpand))))
   
   (define (output-line str)
@@ -94,7 +94,7 @@
         (let* [[e (car prog)]
                [ctx (cdr prog)]
                [t (expr->term e ctx)]
-               [p (unexpand (term->pattern t))]]
+               [p (unexpand-pattern (term->pattern t))]]
           (if p
               (list (cons (pattern->term p) ctx))
               (begin (when DEBUG_STEPS (show-skip e #;ctx))

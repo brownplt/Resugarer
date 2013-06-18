@@ -329,7 +329,7 @@
                      (o-macro 'Cond 2))))))
 
 (define-syntax-rule (test-expand-unexpand p)
-  (check-equal? (unexpand (expand (test-pattern p)))
+  (check-equal? (unexpand-pattern (expand-pattern (test-pattern p)))
                 (test-pattern p)))
 
 (test-expand-unexpand (Cond [^ 1 2]))

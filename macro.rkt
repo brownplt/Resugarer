@@ -1,7 +1,7 @@
 (module macros racket
   (provide
    define-macro lookup-macro
-   expand unexpand
+   expand-pattern unexpand-pattern
    ; testing:
    unchecked-unexpand
    NotUnexpandable?
@@ -59,7 +59,8 @@
        (let* [[e (attempt-unification (minus x p))]]
          (if (unification-failure? e)
              (expand-macro (Macro name cs) x)
-             (substitute e q)))]))
+             (substitute e q)))]
+      [#f (fail "Could not expand: ~a" (show-pattern x))]))
   
   (define (unexpand-macro x origin)
     (match origin
@@ -69,15 +70,15 @@
               [rhs (MacroCase-right c)]]
          (substitute (minus (tag x (o-macro m n)) rhs (o-branch)) lhs))]))
   
-  (define (expand e)
+  (define (expand-pattern e)
     (match e
       [(constant c)       (constant c)]
       [(literal l)        (literal l)]
-      [(tag p o)          (tag (expand p) o)]
+      [(tag p o)          (tag (expand-pattern p) o)]
       [(plist t ps)
        (if (t-macro? t)
-           (expand (expand-macro (lookup-macro (t-macro-name t)) e))
-           (plist t (map expand ps)))]))
+           (expand-pattern (expand-macro (lookup-macro (t-macro-name t)) e))
+           (plist t (map expand-pattern ps)))]))
   
   (define (unchecked-unexpand p)
     (define (check-unlittered p)
@@ -102,7 +103,7 @@
                           [(o-branch) (tag (rec p2) o)])]))
     (check-unlittered (rec p)))
   
-  (define (unexpand p)
+  (define (unexpand-pattern p)
     (with-handlers [[(λ (x) (or (NotUnexpandable? x) (CantMatch? x)))
                      (λ (x) #f)]]
       (unchecked-unexpand p)))

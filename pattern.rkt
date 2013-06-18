@@ -89,7 +89,8 @@
       * '!' means "Feel free to display the following subexpression to the user.
   |#
   
-  (define standard-lambda 'lambda) ; choose between λ and lambda
+  (define standard-lambda 'lambda) ; choose between λ and lambda internally
+  (define printed-lambda 'λ)       ; choose between λ and lambda for printing
   
   ; Compile a racket-like macro pattern into a Pattern.
   ; Guarantees that no ellipses pattern is variableless.
@@ -175,6 +176,8 @@
                                (rec x))]
       [(pvar v)            v]
       [(literal x)         x]
+      [(constant 'lambda)  printed-lambda]
+      [(constant 'λ)       printed-lambda]
       [(constant x)        x]
       [(plist t elems)     (append (type->sexprs t)
                                    (map rec elems))]
