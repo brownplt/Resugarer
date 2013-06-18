@@ -1,10 +1,11 @@
 (module pattern-untyped racket
   (provide
    sexpr->pattern pattern->sexpr make-pattern
-   term->pattern pattern->term term-list term-id make-term show-term term->sexpr
+   term->pattern pattern->term make-term show-term term->sexpr
    unify minus substitute
    attempt-unification unification-failure?
    nominal? strip-tags
+   (struct-out term-list) (struct-out term-id)
    (struct-out pvar) (struct-out literal) (struct-out constant)
      (struct-out plist) (struct-out ellipsis)
    (struct-out inter-list) (struct-out inter-ellipsis)
@@ -88,6 +89,8 @@
       * '!' means "Feel free to display the following subexpression to the user.
   |#
   
+  (define standard-lambda 'lambda) ; choose between λ and lambda
+  
   ; Compile a racket-like macro pattern into a Pattern.
   ; Guarantees that no ellipses pattern is variableless.
   ; TODO: Verify that variables are unique
@@ -111,6 +114,8 @@
       (symbol-begins-with? sym (lambda (c) (char=? c #\$))))
     (define (var-like? sym)
       (and (symbol-lower-case? sym) (or (not vars) (member sym vars))))
+    (define (a-lambda? sym)
+      (or (eq? sym 'λ) (eq? sym 'lambda)))
     (define (const-like? sym)
       (or (and (symbol-lower-case? sym) (not (var-like? sym)))
           (and (symbol? sym) (not (symbol-lower-case? sym)))))
@@ -128,6 +133,7 @@
            (cond
              [(literal-like? p)   (literal p)]
              [(var-like? p)       (pvar p)]
+             [(a-lambda? p)       (constant standard-lambda)] ; hack
              [(const-like? p)     (constant p)]
              [else                (fail "Not a valid literal or variable: ~a" p)])]
           [(number? p)  (constant p)]
@@ -462,6 +468,7 @@
       [(term-id (list) t)                   (term->pattern t)]
       [(term-id (cons o os) t)              (tag (term->pattern (term-id os t)) o)]
       [(? (λ (x) (symbol-prefix? "$" x)) l) (literal l)]
+      [(or 'λ 'lambda)                      (constant standard-lambda)] ; hack
       [x                                    (constant x)]))
   
   (define-syntax-rule (make-term t)
