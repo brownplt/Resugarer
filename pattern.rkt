@@ -4,7 +4,7 @@
    term->pattern pattern->term make-term show-term term->sexpr
    unify minus substitute
    attempt-unification unification-failure?
-   nominal? strip-tags
+   nominal? strip-tags strip-term-tags
    (struct-out term-list) (struct-out term-id)
    (struct-out pvar) (struct-out literal) (struct-out constant)
      (struct-out plist) (struct-out ellipsis)
@@ -299,19 +299,7 @@
                            (map minus l (repeat (length l) y))
                            (minus m y)
                            (map minus r (repeat (length r) y))))
-
-    (define (has-origin? t o)
-      (and (tag? t) (equal? (tag-origin t) o)))
-    
-    (define (strip-origin x y)
-      ; This conditional is very delicate, and probably wrong.
-      (cond [(nominal? x)           (strip-tags x)]
-            [(pvar? y)              x]
-            [(not origin)           (strip-tags x)]
-            [(has-origin? x origin) (strip-tags x)]
-            [else                   (fail)]))
       
-;      (match* ((strip-origin x y) y)
       (match* (x y)
         [((literal x) (literal x))     (succeed)]
         [((literal _) _)               (fail)]
@@ -448,6 +436,14 @@
   ;        | symbol | number | ...
   (struct term-list (tags terms) #:transparent)
   (struct term-id (tags term) #:transparent) ; The identity function; useful only for its tags
+  
+  (define (strip-term-tags t)
+    (match t
+      [(term-id tags term)
+       (strip-term-tags term)]
+      [(term-list tags terms)
+       (term-list (list) (map strip-term-tags terms))]
+      [x x]))
   
   (define (pattern->term p)
     (match p

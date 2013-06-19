@@ -5,7 +5,7 @@
   (require "macro.rkt")
   (provide
    define-macro
-   make-term test-expand term-list term-id expand-term unexpand-term show-term term->sexpr
+   make-term test-expand term-list term-id expand-term unexpand-term show-term term->sexpr strip-term-tags
    could-not-unexpand?
    language language-name language-expr->term language-term->expr language-step language-show-expr
    macro-aware-step

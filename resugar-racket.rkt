@@ -19,6 +19,9 @@
                           (void? t)))
   
   (define SHOW_PROC_NAMES #t)
+  (define DEBUG_VARS #f)
+  (define (set-debug-vars! x)
+    (set! DEBUG_VARS x))
   
   (define (call-func f ctx . args)
     (if (Func? f)
@@ -32,7 +35,9 @@
            (let* [[name (Var-name x)]
                   [val (Var-value x)]
                   [u (unexpand-term (value->term val))]]
-             (if (could-not-unexpand? u) name u))]
+             (if DEBUG_VARS
+                 (term-list (list) (list name ':= (strip-term-tags (value->term val))))
+                 (if (could-not-unexpand? u) name u)))]
           [(and SHOW_PROC_NAMES (procedure? x) (object-name x))
            (object-name x)]
           [else x]))
@@ -251,7 +256,7 @@
 
   (define-macro Cond
     [(Cond [^ $else x])   (begin x)]
-    [(Cond [^ x y])       (if x y (+ 0 0))]
+    [(Cond [^ x y])       (if x y (void))]
     [(Cond [^ x y] z ...) (if x y (! Cond z ...))])
   
   (define-macro Let
@@ -263,6 +268,10 @@
      ((lambda (x) b) e)]
     [(Let [^ [^ x e] [^ xs es] ...] b)
      ((lambda (x) (! Let [^ [^ xs es] ...] b)) e)])
+  
+  (define-macro Let1
+    [(Let1 v x y)
+     (Let [^ [^ v x]] y)])
   
   (define-macro Set
     [(Set [^ [^ [^ f x] e]] b)
@@ -283,19 +292,22 @@
   (define-macro Or
     [(Or x) (begin x)]
     [(Or x y ys ...)
-     ((λ (t) (if t t (! Or y ys ...))) x)])
+     (Let1 t x (if t t (! Or y ys ...)))])
+;     ((λ (t) (if t t (! Or y ys ...))) x)])
   
   (define-macro And
     [(And x) (begin x)]
     [(And x y ys ...)
-     (if x (And y ys ...) #f)])
+     (if x (! And y ys ...) #f)])
   
   (define-macro Just
     [(Just x) (begin x)])
   
-  (define-macro Let1
-    [(Let1 v x y)
-     ((λ (v) y) x)])
+  (define-macro M1
+    [(M1 $emm) 3])
+  
+  (define-macro M2
+    [(M2 x) (M1 x)])
   
   (define-macro Inc
     [(Inc x) (+ x 1)])
@@ -341,7 +353,7 @@
            (Let [^ [^ head (string-first stream)]
                    [^ tail (string-rest stream)]]
                 (Cond
-                 [^ (equal? label head) (! target tail)]
+                 [^ (equal? label head) (! target (string-rest stream))]
                  ...
                  [^ $else #f]))))])
 
@@ -350,10 +362,12 @@
         [^ state $: response ...]
         ...)
      (Letrec [^ [^ state (ProcessState response ...)] ...]
-             init-state)])
+             (λ (x) (! init-state x))
+             #;init-state)])
   
   (set-debug-steps! #f)
   (set-debug-tags! #f)
+  (set-debug-vars! #f)
   
   (define (my-external-function f)
     (f (f 17)))
@@ -371,8 +385,7 @@
   (test-eval (((λ (f) (λ (x) (f (f x)))) (λ (x) (+ x 1))) (+ 2 3)))
   (test-eval (+ 1 (my-external-function (λ (x) (+ x 1)))))
   (test-eval (+ 0 (car (cons (+ 1 2) (+ 3 4)))))
-  (test-eval (Or #f #t))
-  (test-eval (Or #f (+ 1 2)))
+  (test-eval (Or (And #f #t) (+ 1 2)))
   (test-eval (Inc (+ 1 2)))
   (test-eval (+ 1 (begin (begin (+ 1 2)))))
   (test-eval (begin (+ 1 2) (+ 3 4)))
@@ -403,7 +416,12 @@
   
   (test-eval (Cdavr "cdad"))
   (test-eval (Cdavr "cadr"))
-  (test-expand-term (Cdavr "cadr")) ; Huge!
+  ;(test-expand-term (Cdavr "cadr")) ; Huge!
+  ; You see (m "cadr") instead of (init "cadr") for the same reason
+  ;   (Let [[x (λ (v) v)]] (Let [[y x]] (Let [[z y]] (z 0))))
+  ; steps through (z 0) -> ((λ (v) v) 0) -> 0
+  ; instead of    (z 0) -> (y 0) -> (x 0) -> ((λ (v) v) 0) -> 0
+  ; steps through (+ 1 2), but never through (+ (+ 0 1) 2).
   (test-eval
    (Let [^ [^ m (Automaton
                  init
@@ -422,6 +440,7 @@
                             [^ "r" $-> end]]
                  [^ end $:  "accept"])]]
         (m "cdad")))
+  ;(test-eval (M2 $emm)) BUG! I don't know how to fix this w/o ugly hacks
   #|
   (time (test-eval (Letrec [^ [^ [^ fib n]
                                  (if (Or (eq? n 0) (eq? n 1)) 1 (+ (fib (- n 1)) (fib (- n 2))))]]
