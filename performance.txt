@@ -1,0 +1,63 @@
+Simple performance measurements.
+The overhead is extremely high.
+The cost appears to be constructing terms as you build up the stack.
+It is (expectedly) worst when the term becomes unreasonably large,
+as in dumb factorial or fibonacci.
+
+
+NO_EMIT:
+  Accumulating Factorial:
+    cpu time: 4 real time: 2 gc time: 0
+    cpu time: 368 real time: 371 gc time: 16
+  Fibonacci:
+    cpu time: 4 real time: 0 gc time: 0
+    cpu time: 15841 real time: 15853 gc time: 360
+  Factorial (2000):
+    cpu time: 4 real time: 2 gc time: 0
+    cpu time: 10505 real time: 10643 gc time: 236
+
+DISABLED:
+  Accumulating Factorial (10000):
+    cpu time: 88 real time: 88 gc time: 16
+    cpu time: 696 real time: 693 gc time: 600
+  Fibonacci (20):
+    cpu time: 4 real time: 2 gc time: 0
+    cpu time: 36 real time: 35 gc time: 0
+  Factorial (10000):
+    cpu time: 568 real time: 573 gc time: 500
+    cpu time: 108 real time: 105 gc time: 28 // Not sure why this is faster. gc luck?
+
+
+  (define (time-fib)
+    (display "Fibonacci:\n")
+    (time (letrec ((fib (λ (n) (if (or (eq? n 0) (eq? n 1))
+                                   1
+                                   (+ (fib (- n 1)) (fib (- n 2)))))))
+            (begin (fib 20) (void))))
+    (time (test-eval (Letrec [^ [^ [^ fib n] (if (Or (eq? n 0) (eq? n 1))
+                                                 1
+                                                 (+ (fib (- n 1)) (fib (- n 2))))]]
+                             (begin (fib 20) (void))))))
+  
+  (define (time-factorial)
+    (display "Factorial:\n")
+    (time (letrec ((factorial (λ (n) (if (eq? n 0)
+                                         1
+                                         (* n (factorial (- n 1)))))))
+            (begin (factorial 10000) (void))))
+    (time (test-eval (Letrec [^ [^ [^ factorial n] (if (eq? n 0)
+                                                       1
+                                                       (* n (factorial (- n 1))))]]
+                             (begin (factorial 10000) (void))))))
+  
+  (define (time-fast-factorial)
+    (display "Accumulating Factorial:\n")
+    (time (letrec ((factorial (λ (n prod)
+                                (if (eq? n 0) prod
+                                    (factorial (- n 1) (* n prod))))))
+            (begin (factorial 10000 1) (void))))
+    (time (test-eval (Letrec [^ [^ [^ factorial n prod]
+                                   (if (eq? n 0) prod (factorial (- n 1) (* n prod)))]]
+                             (begin (factorial 10000 1) (void))))))
+
+

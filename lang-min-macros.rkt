@@ -38,8 +38,7 @@
 (define-macro Or
   [(Or x) (begin x)]
   [(Or x xs ...)
-   (apply (lambda t (if t t (! Or xs ...))) x)])
-;   (Let t x (if t t (Or xs ...)))])
+   (Let t x (if t t (! Or xs ...)))])
 
 (define-macro Letrec
   [(Letrec x e b)

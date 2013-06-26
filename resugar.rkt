@@ -60,8 +60,13 @@
     (let [[q (unexpand-pattern (term->pattern t))]]
       (if q (pattern->term q) (could-not-unexpand))))
   
+  (define last-line #f)
   (define (output-line str)
-    (display str) (newline))
+    (when (not (equal? str last-line))
+      (begin
+        (display str)
+        (newline)
+        (set! last-line str))))
     
   (define (show-step t)
     (output-line (if DEBUG_TAGS
@@ -114,16 +119,15 @@
                   (rec lang (caar next-progs) (cdar next-progs))))))
     (deduplicate (rec lang t ctx)))
   
+  (define (emit t)
+    (let [[t2 (unexpand-term t)]]
+      (if (could-not-unexpand? t2)
+          (show-skip t)
+          (show-step t2))))
+  
   ; macro-aware-eval* : Language expr ctx -> pattern -> void
   ; A callback-based version of macro-aware-eval.
-  (define (macro-aware-eval* convert steps s)
-    
-    (define (emit t)
-      (let [[t2 (unexpand-term t)]]
-        (if (could-not-unexpand? t2)
-            (show-skip t)
-            (show-step t2))))
-    
+  (define (macro-aware-eval* convert steps s [emit emit])
     (let [[t (expand-term s)]]
       (steps (convert t) emit)))
 )
