@@ -4,6 +4,9 @@
 
   ; See debug-racket.rkt
   ; for a much cleaner presentation of the debugging approach.
+  
+  ; TODO: hook up macro validation
+  ; TODO: add 'let' language primitive to stepper
 
   (define-struct Var (name value) #:transparent)
   (define-struct Func (term annot bare)
@@ -342,7 +345,7 @@
   (define-macro Or
     [(Or x) (begin x)]
     [(Or x y ys ...)
-     (Let1 t x (if t t (! Or y ys ...)))])
+     (Let [^ [^ t x]] (if t t (! Or y ys ...)))])
   
   (define-macro Or2
     [(Or2 x y) (Let1 t x (if t t y))])
@@ -405,9 +408,9 @@
            (Let [^ [^ head (string-first stream)]
                    [^ tail (string-rest stream)]]
                 (Cond
-                 [^ (equal? label head) (begin (! target tail))]
+                 [^ (equal? label head) (! target (string-rest stream))]
                  ...
-                 [^ $else #f]))))])
+                 [^ $else (begin #f)]))))])
 
   (define-macro Automaton
     [(_ init-state
@@ -448,7 +451,7 @@
                                    (if (eq? n 0) prod (factorial (- n 1) (* n prod)))]]
                              (begin (factorial 10000 1) (void))))))
   
-  (define NO_EMIT #f)
+  (define NO_EMIT #t)
   (define DISABLED #f)
   (set-debug-steps! #f)
   (set-debug-tags! #f)
@@ -470,6 +473,7 @@
   (test-eval (((λ (f) (λ (x) (f (f x)))) (λ (x) (+ x 1))) (+ 2 3)))
   (test-eval (+ 1 (my-external-function (λ (x) (+ x 1)))))
   (test-eval (+ 0 (car (cons (+ 1 2) (+ 3 4)))))
+  (test-eval (Or 1 2))
   (test-eval (Or (And #f #t) (+ 1 2)))
   (test-eval (Inc (+ 1 2)))
   (test-eval (+ 1 (begin (begin (+ 1 2)))))
@@ -535,9 +539,9 @@
                  [^ more-0 $: [^ "0" $-> more-0]
                               [^ "1" $-> more-1]]
                  [^ end    $: "accept"])]]
-        (cons (m "101001.") (m "10110"))))
+        (m "11010.")))
   ;(test-expand-term (Let [^ [^ x 1]] (+ x 1)))
-  ;(time-fast-factorial)
+  (time-fast-factorial)
   ;(time-fib)
   ;(time-factorial)
   #|

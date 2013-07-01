@@ -3,6 +3,7 @@
 (require (except-in rackunit fail))
 (require "pattern.rkt")
 (require "macro.rkt")
+(require "resugar.rkt")
 
 
 ;;;;;;;;;;;;
@@ -337,6 +338,13 @@
 (test-expand-unexpand (Cond [^ (+ a 2) 1] [^ $else (+ 1 2)]))
 (test-expand-unexpand (Cond [^ $else (+ 1 1)]))
 (test-expand-unexpand (Cond [^ (+ a 2) 1] [^ $else 2]))
+
+(define-macro M
+  ((M x y ...)
+   '((x y) ...)))
+
+(check-equal? (show-term (expand-term (make-term (M (a) b c))))
+              "'(((a) b) ((a) c))")
 
 #|
 ;;;;;;;;;;;;;;

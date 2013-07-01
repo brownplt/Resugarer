@@ -76,9 +76,12 @@
       [(literal l)        (literal l)]
       [(tag p o)          (tag (expand-pattern p) o)]
       [(plist t ps)
-       (if (t-macro? t)
-           (expand-pattern (expand-macro (lookup-macro (t-macro-name t)) e))
-           (plist t (map expand-pattern ps)))]))
+       (cond [(t-macro? t)
+              (expand-pattern (expand-macro (lookup-macro (t-macro-name t)) e))]
+             [(t-apply? t)
+              (plist t (map expand-pattern ps))]
+             [(t-syntax? t)
+              (fail "expand-pattern: extraneous syntax-parens (^)")])]))
   
   (define (unchecked-unexpand p)
     (define (check-unlittered p)
@@ -91,7 +94,7 @@
       (match p
         [(constant c)   (constant c)]
         [(literal l)    (literal l)]
-        [(plist t ps)   (plist t (map rec ps))]
+        [(plist (t-apply) ps) (plist (t-apply) (map rec ps))]
         [(tag p2 o)     (match o
                           [(o-macro m n) (unexpand-macro (rec p2) o)]
                           [(o-branch)
@@ -100,7 +103,8 @@
                              #;[(tag p3 (o-macro m n))
                               (tag p3 (o-macro m n))]
                              [p2 (tag (rec p2) o)])]
-                          [(o-branch) (tag (rec p2) o)])]))
+                          [(o-branch) (tag (rec p2) o)])]
+        [_              (raise (NotUnexpandable p))]))
     (check-unlittered (rec p)))
   
   (define (unexpand-pattern p)
