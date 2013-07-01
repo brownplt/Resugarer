@@ -27,13 +27,13 @@
              (tag-macro (validate-macro (Macro 'name (list (MacroCase pc qc) ...)))))))]))
   
   (define (tag-macro m)
-    (define (wrap-macro n c)
+    (define (wrap-macro i c)
       (match c
         [(MacroCase left right)
-         (MacroCase left (tag right (o-macro (Macro-name m) n)))]))
+         (MacroCase left (tag right (o-macro (Macro-name m) i 'gremlin)))]))
     (match m
       [(Macro name cases)
-       (Macro name (map (λ (n) (wrap-macro n (list-ref cases n)))
+       (Macro name (map (λ (i) (wrap-macro i (list-ref cases i)))
                         (range (length cases))))]))
   
   
@@ -86,14 +86,14 @@
           [(literal _) (set)]
           [(constant _) (set)]
           [(tag p _) (check-wf-rhs p)]
-          [(plist _ ps) (apply set-union (map check-wf-rhs ps))]
+          [(plist _ ps) (set-unions (map check-wf-rhs ps))]
           [(ellipsis _ ps r qs)
            (let [[fvr (check-wf-rhs r)]]
              (if (set-empty? fvr)
                  (empty-ellipsis-failure m c)
-                 (apply set-union (append (map check-wf-rhs ps)
-                                          (list fvr)
-                                          (map check-wf-rhs qs)))))]))
+                 (set-unions (append (map check-wf-rhs ps)
+                                     (list fvr)
+                                     (map check-wf-rhs qs)))))]))
 
       
       (begin (check-wf-lhs (MacroCase-left c))
@@ -145,6 +145,10 @@
   (struct NotUnexpandable (pattern) #:transparent)
   
   (define (expand-macro m x)
+    (define (insert-orig-env e p)
+      (match p
+        [(tag p (o-macro m i _))
+         (tag p (o-macro m i e))]))
     (match m
       [(Macro name (list))
        (fail "No matching pattern in macro ~a for ~a" name (show-pattern x))]
@@ -152,16 +156,17 @@
        (let* [[e (attempt-unification (minus x p))]]
          (if (unification-failure? e)
              (expand-macro (Macro name cs) x)
-             (substitute e q)))]
+             (insert-orig-env (hash-remove-keys e (free-vars q))
+                              (substitute e q))))]
       [#f (fail "Could not expand: ~a" (show-pattern x))]))
   
   (define (unexpand-macro x origin)
     (match origin
-      [(o-macro m n)
-       (let* [[c (list-ref (Macro-cases (lookup-macro m)) n)]
+      [(o-macro m i q)
+       (let* [[c (list-ref (Macro-cases (lookup-macro m)) i)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-         (substitute (minus (tag x (o-macro m n)) rhs (o-branch)) lhs))]))
+         (substitute (hash-union q (minus (tag x (o-macro m i q)) rhs (o-branch))) lhs))]))
   
   (define (expand-pattern e)
     (match e
@@ -189,7 +194,7 @@
         [(literal l)    (literal l)]
         [(plist (t-apply) ps) (plist (t-apply) (map rec ps))]
         [(tag p2 o)     (match o
-                          [(o-macro m n) (unexpand-macro (rec p2) o)]
+                          [(o-macro m i q) (unexpand-macro (rec p2) o)]
                           [(o-branch)
                            (match p2
                              ; Fail to unexpand if a macro is tainted

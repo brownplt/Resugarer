@@ -55,6 +55,15 @@
   (define (hash-union . es)
     (make-immutable-hash (apply append (map hash->list es))))
   
+  ; hash-remove-keys : Env(x) -> Set(x) -> Env(x)
+  ; Remove all bindings from 'e' whose keys are in 's'.
+  (define (hash-remove-keys e s)
+    (define (remove-keys e l)
+      (if (empty? l)
+          e
+          (remove-keys (hash-remove e (car l)) (cdr l))))
+    (remove-keys e (set->list s)))
+  
   ; deduplicate : list -> list
   ; Remove adjacent duplicates from a list, like unix 'uniq'
   (define (deduplicate l [same? equal?])

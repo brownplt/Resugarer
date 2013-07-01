@@ -290,6 +290,10 @@
 
 (check-equal? (all-distinct-pairs '(1 2 3)) '((1 . 2) (1 . 3) (2 . 3)))
 
+(check-equal? (make-immutable-hash '((2 . 3)))
+              (hash-remove-keys (make-immutable-hash '((1 . 2) (2 . 3) (3 . 4)))
+                                (set '1 '3)))
+
 (display "ok\n")
 
 ;;;;;;;;;;;;
@@ -302,34 +306,13 @@
   [(_ (^ x y))       (if x y (void))]
   [(_ (^ x y) z zs ...) (! if x y (Cond z zs ...))])
 
+(define-macro ForgetfulSam
+  [(_ x) 107])
+
 (define cond-origin* (t-macro 'Cond))
 (define (plist* o . xs) (plist o (apply list xs)))
 
 (check-equal? (lookup-macro 'Bob) #f)
-(check-equal? (lookup-macro 'Cond)
-  (Macro 'Cond
-    (list
-     (MacroCase (plist* cond-origin*
-                        (plist* (t-syntax) (literal '$else) (pvar 'x)))
-                (tag (pvar 'x) (o-macro 'Cond 0)))
-     (MacroCase (plist* cond-origin*
-                        (plist* (t-syntax) (pvar 'x) (pvar 'y)))
-                (tag (tag (plist* (t-apply)
-                                  (constant 'if) (pvar 'x) (pvar 'y)
-                                  (tag (plist* (t-apply) (constant 'void))
-                                       (o-branch)))
-                          (o-branch))
-                     (o-macro 'Cond 1)))
-     (MacroCase (ellipsis cond-origin*
-                          (list (plist* (t-syntax) (pvar 'x) (pvar 'y)) (pvar 'z))
-                          (pvar 'zs)
-                          (list))
-                (tag (plist* (t-apply) (constant 'if) (pvar 'x) (pvar 'y)
-                             (ellipsis cond-origin*
-                                       (list (pvar 'z))
-                                       (pvar 'zs)
-                                       (list)))
-                     (o-macro 'Cond 2))))))
 
 (define-syntax-rule (test-expand-unexpand p)
   (check-equal? (unexpand-pattern (expand-pattern (test-pattern p)))
@@ -340,6 +323,7 @@
 (test-expand-unexpand (Cond [^ (+ a 2) 1] [^ $else (+ 1 2)]))
 (test-expand-unexpand (Cond [^ $else (+ 1 1)]))
 (test-expand-unexpand (Cond [^ (+ a 2) 1] [^ $else 2]))
+(test-expand-unexpand (ForgetfulSam 11))
 
 (define-macro M
   ((M x y ...)

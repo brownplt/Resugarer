@@ -49,7 +49,7 @@
   ;        | o-eval
   ;        | o-macro macro-name expansion-nonce macro-case
   
-  (struct o-macro (m c) #:transparent)
+  (struct o-macro (m c q) #:transparent)
   (struct o-branch () #:transparent)
   
   ; Inter : Pattern
@@ -169,7 +169,7 @@
     (define (orig->sexpr o)
       (match o
         [(o-branch) 'o-branch]
-        [(o-macro m c) (list 'o-macro m c)]))
+        [(o-macro m c q) (list 'o-macro m c q)]))
     (match x
       [(tag x o)           (if keep-tags?
                                (list 'tag (rec x) (orig->sexpr o))
@@ -345,7 +345,7 @@
                   (minuses r1:r r2)))))]
         [((tag x (o-branch)) (tag y (o-branch)))
          (minus x y)]
-        [((tag x (o-macro m n)) (tag y (o-macro m n)))
+        [((tag x (o-macro m i _)) (tag y (o-macro m i _)))
          (minus x y)]
         [(_ _) (fail)])))
   
