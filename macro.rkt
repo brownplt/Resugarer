@@ -24,7 +24,7 @@
                      [(qc ...) (generate-temporaries #'(q ...))])
          #'(let [[pc (sexpr->pattern '(name p ...) #f #f)] ...]
            (let [[qc (sexpr->pattern 'q (set->list (free-vars pc)) #t)] ...]
-             (tag-macro (Macro 'name (list (MacroCase pc qc) ...))))))]))
+             (tag-macro (validate-macro (Macro 'name (list (MacroCase pc qc) ...)))))))]))
   
   (define (tag-macro m)
     (define (wrap-macro n c)
@@ -45,6 +45,99 @@
     (if (hash-has-key? global-macro-dictionary name)
         (hash-ref global-macro-dictionary name)
         #f))
+  
+  
+  ;;; Validating Macros ;;;
+  
+  (define (check-wf-macro m)
+    
+    (define (check-wf-case c)
+      
+      (define (union-vars vs)
+        (cond [(empty? vs) (set)]
+              [(eq? (length vs) 1) (car vs)]
+              [else (let [[overlap (set-intersect (car vs) (cadr vs))]]
+                      (if (set-empty? overlap)
+                          (union-vars (cons (set-union (car vs) (cadr vs))
+                                            (cddr vs)))
+                          (duplicate-var-failure m (set-first overlap) c)))]))
+      
+      (define (check-wf-lhs p)
+        (match p
+          [(pvar v) (set v)]
+          [(literal _) (set)]
+          [(constant _) (set)]
+          [(tag p _) (check-wf-lhs p)]
+          [(plist _ ps) (union-vars (map check-wf-lhs ps))]
+          [(ellipsis _ ps r qs)
+           (let [[fvr (check-wf-lhs r)]]
+             (if (set-empty? fvr)
+                 (empty-ellipsis-failure m c)
+                 (union-vars (append (map check-wf-lhs ps)
+                                     (list fvr)
+                                     (map check-wf-lhs qs)))))]))
+      
+      ; TODO: check that each var on the rhs appears under at least as many
+      ;       ellipses as it does in the lhs.
+      ; TODO: Figure out duplicate rhs variables.
+      (define (check-wf-rhs p)
+        (match p
+          [(pvar v) (set v)]
+          [(literal _) (set)]
+          [(constant _) (set)]
+          [(tag p _) (check-wf-rhs p)]
+          [(plist _ ps) (apply set-union (map check-wf-rhs ps))]
+          [(ellipsis _ ps r qs)
+           (let [[fvr (check-wf-rhs r)]]
+             (if (set-empty? fvr)
+                 (empty-ellipsis-failure m c)
+                 (apply set-union (append (map check-wf-rhs ps)
+                                          (list fvr)
+                                          (map check-wf-rhs qs)))))]))
+
+      
+      (begin (check-wf-lhs (MacroCase-left c))
+             (check-wf-rhs (MacroCase-right c))))
+    
+    (for-each check-wf-case (Macro-cases m)))
+  
+  (define (validate-macro m)
+    (define (validate-pair pair)
+      (let* [[c1 (car pair)]
+             [c2 (cdr pair)]
+             [p1 (MacroCase-left c1)]
+             [p2 (MacroCase-left c2)]
+             [q1 (MacroCase-right c1)]
+             [q2 (MacroCase-right c2)]
+             [union (attempt-unification (unify p1 p2))]]
+        (when (not (unification-failure? union))
+          ;; TODO: Validate fvar requirements for 2nd static check.
+          (let [[L (substitute (minus union p2) q2)]
+                [R (substitute (minus union p1) q1)]]
+            (display (format "~a ~a\n" (show-pattern L) (show-pattern R)))
+            (when (not (equal? L R))
+              (validation-failure m c1 c2 union))))))
+
+    (begin (check-wf-macro m)
+           (for-each validate-pair (all-distinct-pairs (Macro-cases m)))
+           m))
+  
+  (define (show-macro-case c)
+    (format "[~a => ~a]"
+            (show-pattern (MacroCase-left c))
+            (show-pattern (MacroCase-right c))))
+  
+  (define (validation-failure m c1 c2 p)
+    (fail "Invalid macro ~a. Cases ~a and ~a overlap on input ~a."
+          (Macro-name m) (show-macro-case c1) (show-macro-case c2) (show-pattern p)))
+  
+  (define (duplicate-var-failure m v c)
+    (fail "Invalid macro ~a. Duplicate variable ~a in case ~a."
+          (Macro-name m) v (show-macro-case c)))
+  
+  (define (empty-ellipsis-failure m c)
+    (fail "Invaid macro ~a. Variableless ellipsis in case ~a."
+          (Macro-name m) (show-macro-case c)))
   
   
   ;;; Expanding & Unexpanding Macros ;;;

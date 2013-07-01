@@ -313,28 +313,28 @@
     [(Cond [^ x y] z zs ...) (if x y (! Cond z zs ...))])
   
   (define-macro Let
-    [(Let [^ [^ [^ f x ...] e]] b)
-     ((lambda (f) b) (lambda (x ...) e))]
-    [(Let [^ [^ [^ f x ...] e] [^ xs es] ...] b)
-     ((lambda (f) (! Let [^ [^ xs es] ...] b)) (lambda (x ...) e))]
+;    [(Let [^ [^ [^ f x ...] e]] b)
+;     ((lambda (f) b) (lambda (x ...) e))]
+;    [(Let [^ [^ [^ f x ...] e] [^ xs es] ...] b)
+;     ((lambda (f) (! Let [^ [^ xs es] ...] b)) (lambda (x ...) e))]
     [(Let [^ [^ x e]] b)
      ((lambda (x) b) e)]
-    [(Let [^ [^ x e] [^ xs es] ...] b)
-     ((lambda (x) (! Let [^ [^ xs es] ...] b)) e)])
+    [(Let [^ [^ x e] y ys ...] b)
+     ((lambda (x) (! Let [^ y ys ...] b)) e)])
   
   (define-macro Let1
     [(Let1 v x y)
      (Let [^ [^ v x]] y)])
   
   (define-macro Set
-    [(Set [^ [^ [^ f x ...] e]] b)
-     (begin (set! f (lambda (x ...) e)) b)]
-    [(Set [^ [^ [^ f x ...] e] xs ...] b)
-     (begin (set! f (lambda (x ...) e)) (! Set [^ xs ...] b))]
+;    [(Set [^ [^ [^ f x ...] e]] b)
+;     (begin (set! f (lambda (x ...) e)) b)]
+;    [(Set [^ [^ [^ f x ...] e] xs ...] b)
+;     (begin (set! f (lambda (x ...) e)) (! Set [^ xs ...] b))]
     [(Set [^ [^ x e]] b)
      (begin (set! x e) b)]
-    [(Set [^ [^ x e] xs ...] b)
-     (begin (set! x e) (! Set [^ xs ...] b))])
+    [(Set [^ [^ x e] y ys ...] b)
+     (begin (set! x e) (! Set [^ y ys ...] b))])
 
   (define-macro Letrec
     [(Letrec [^ [^ x e] ...] b)
@@ -354,6 +354,13 @@
     [(And x) (begin x)]
     [(And x y ys ...)
      (if x (! And y ys ...) #f)])
+  
+  (define-macro NotWellFormed
+    [(NotWellFormed x) y])
+  
+  (define-macro Quickand
+    [(Quickand x #t) x]
+    [(Quickand #t y) y])
   
   (define-macro Just
     [(Just x) (begin x)])
@@ -378,22 +385,22 @@
   
   (define-macro Cdavr
     [(Cdavr input)
-     (Letrec [^ [^ [^ init x]
+     (Letrec [^ [^ init (λ (x)
                    (if (equal? x "") #f
                        (Let [^ [^ head (string-first x)]
                                [^ tail (string-rest x)]]
                             (Cond [^ (equal? "c" head) (! more tail)]
-                                  [^ $else (begin #f)])))]
-                [^ [^ more x]
+                                  [^ $else (begin #f)]))))]
+                [^ more (λ (x)
                    (if (equal? x "") #f
                        (Let [^ [^ head (string-first x)]
                                [^ tail (string-rest x)]]
                             (Cond [^ (equal? "a" head) (! more tail)]
                                   [^ (equal? "d" head) (! more tail)]
                                   [^ (equal? "r" head) (! end tail)]
-                                  [^ $else (begin #f)])))]
-                [^ [^ end x]
-                   (equal? x "")]]
+                                  [^ $else (begin #f)]))))]
+                [^ end (λ (x)
+                   (equal? x ""))]]
              (! init input))])
   
   (define-macro ProcessState
@@ -451,7 +458,7 @@
                                    (if (eq? n 0) prod (factorial (- n 1) (* n prod)))]]
                              (begin (factorial 10000 1) (void))))))
   
-  (define NO_EMIT #t)
+  (define NO_EMIT #f)
   (define DISABLED #f)
   (set-debug-steps! #f)
   (set-debug-tags! #f)
@@ -488,18 +495,16 @@
   (test-eval (Let1 x 3 x))
   (test-eval (Let [^ [^ x 3]] x))
   (test-eval (Let [^ [^ x 1] [^ y (+ 1 2)]] (+ x y)))
-  (test-eval (Letrec [^ [^ [^ f n] (g n)] [^ [^ g n] (+ n 1)]] (f 3)))
+  (test-eval (Letrec [^ [^ f (λ (n) (g n))] [^ g (λ (n) (+ n 1))]] (f 3)))
   (test-eval (Or (zero? 3) (sub1 3)))
   (test-eval (And (not (zero? 3)) (sub1 3)))
   (test-eval (! + 1 2))
-  (test-eval (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f (+ 0 0)))]] (f (+ 0 0)))) ; loops!
-  ;(test-term (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f 0))]] (f 0)))
-  ;(show-term (test-expand (Letrec [^ [^ [^ f n] (if (zero? n) 77 (f 0))]] (f 0))))
+  (test-eval (Letrec [^ [^ f (λ (n) (if (zero? n) 77 (f (+ 0 0))))]] (f (+ 0 0))))
   
-  (test-eval (Letrec [^ [^ [^ is-even? n] (Or (zero? n) (is-odd? (sub1 n)))]
-                        [^ [^ is-odd? n] (And (not (zero? n)) (is-even? (sub1 n)))]]
+  (test-eval (Letrec [^ [^ is-even? (λ (n) (Or (zero? n) (is-odd? (sub1 n))))]
+                        [^ is-odd? (λ (n) (And (not (zero? n)) (is-even? (sub1 n))))]]
                      (is-odd? 11)))
-  (test-eval (Let [^ [^ [^ f x] (+ x 1)]] (f 3)))
+  (test-eval (Let [^ [^ f (λ (x) (+ x 1))]] (f 3)))
   (test-eval (begin (+ 1 2) (+ 3 4)))
   (test-eval ((λ (f) (begin (set! f (λ (x) x)) (f 4))) 3))
   
@@ -541,7 +546,7 @@
                  [^ end    $: "accept"])]]
         (m "11010.")))
   ;(test-expand-term (Let [^ [^ x 1]] (+ x 1)))
-  (time-fast-factorial)
+  ;(time-fast-factorial)
   ;(time-fib)
   ;(time-factorial)
   #|

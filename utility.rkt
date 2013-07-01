@@ -66,6 +66,16 @@
            (deduplicate (cons y ys))
            (cons x (deduplicate (cons y ys))))]))
   
+  ; all-distinct-pairs: [x] -> [(x, x)]
+  ; Find all distinct pairs of elements of a given list
+  ; e.g. (1 2 3) -> ((1 . 2) (1 . 3) (2 . 3))
+  (define (all-distinct-pairs l)
+    (if (empty? l)
+        empty
+        (let [[fst (car l)]
+              [l (cdr l)]]
+          (append (map (λ (snd) (cons fst snd)) l) (all-distinct-pairs l)))))
+  
   ; symbol-begins-with? : symbol -> (char -> bool) -> bool
   (define (symbol-begins-with? sym pred)
     (and (symbol? sym)

@@ -2,7 +2,7 @@
   (provide
    sexpr->pattern pattern->sexpr make-pattern
    term->pattern pattern->term make-term show-term term->sexpr
-   unify minus substitute
+   unify minus substitute disjoint?
    attempt-unification unification-failure?
    nominal? strip-tags strip-term-tags
    (struct-out term-list) (struct-out term-id)
@@ -273,6 +273,10 @@
   
   (define (no-unique-unification x y)
     (fail "unify-ellipses: There may not be a unique unification."))
+  
+  (define (disjoint? x y)
+    (let [[result (attempt-unification (unify x y))]]
+      (unification-failure? result)))
   
   
   ;;;;;;;;;;;;;;

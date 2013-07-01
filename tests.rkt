@@ -288,6 +288,8 @@
 
 (check-equal? (repeat 3 'a) '(a a a))
 
+(check-equal? (all-distinct-pairs '(1 2 3)) '((1 . 2) (1 . 3) (2 . 3)))
+
 (display "ok\n")
 
 ;;;;;;;;;;;;
@@ -298,7 +300,7 @@
 (define-macro Cond
   [(_ (^ $else x))    x]
   [(_ (^ x y))       (if x y (void))]
-  [(_ (^ x y) z ...) (! if x y (Cond z ...))])
+  [(_ (^ x y) z zs ...) (! if x y (Cond z zs ...))])
 
 (define cond-origin* (t-macro 'Cond))
 (define (plist* o . xs) (plist o (apply list xs)))
@@ -319,13 +321,13 @@
                           (o-branch))
                      (o-macro 'Cond 1)))
      (MacroCase (ellipsis cond-origin*
-                          (list (plist* (t-syntax) (pvar 'x) (pvar 'y)))
-                          (pvar 'z)
+                          (list (plist* (t-syntax) (pvar 'x) (pvar 'y)) (pvar 'z))
+                          (pvar 'zs)
                           (list))
                 (tag (plist* (t-apply) (constant 'if) (pvar 'x) (pvar 'y)
                              (ellipsis cond-origin*
-                                       (list)
-                                       (pvar 'z)
+                                       (list (pvar 'z))
+                                       (pvar 'zs)
                                        (list)))
                      (o-macro 'Cond 2))))))
 
