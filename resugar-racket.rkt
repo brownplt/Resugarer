@@ -93,12 +93,13 @@
                      [x* (adorn x_)]]
        #'(term-list (list . os*) (list 'begin x*)))]
       
-      ; (begin x y)
-      [(term-list os_ (list 'begin x_ y_))
+      ; (begin x y ys ...)
+      [(term-list os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[os* os_]
                      [x* (adorn x_)]
-                     [y* (adorn y_)]]
-         #'(term-list (list . os*) (list 'begin x* y*)))]
+                     [y* (adorn y_)]
+                     [(ys* ...) (map adorn ys_)]]
+         #'(term-list (list . os*) (list 'begin x* y* ys* ...)))]
       
       ; (if x y z)
       [(term-list os_ (list 'if x_ y_ z_))
@@ -108,28 +109,18 @@
                      [z* (adorn z_)]]
          #'(term-list (list . os*) (list 'if x* y* z*)))]
       
-      ; (lambda (v) x)
+      ; (lambda (v ...) x)
       [(term-list os_ (cons 'lambda rest))
        (adorn (term-list os_ (cons 'λ rest)))]
       
-      ; (λ (v) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? v_))) x_))
+      ; (λ (v ...) x ...)
+      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) xs_ ...))
        (with-syntax [[os* os_]
                      [os2* os2_]
-                     [v* v_]
-                     [x* (adorn x_)]]
-         #'(let [[v* 'v*]]
-             (term-list (list . os*) (list 'λ (term-list (list . os2*) (list v*)) x*))))]
-      
-      ; (λ (v1 v2) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? v1_) (? symbol? v2_))) x_))
-       (with-syntax [[os* os_]
-                     [os2* os2_]
-                     [v1* v1_]
-                     [v2* v2_]
-                     [x* (adorn x_)]]
-         #'(let [[v1* 'v1*] [v2* 'v2*]]
-             (term-list (list . os*) (list 'λ (term-list (list . os2*) (list v1* v2*)) x*))))]
+                     [(vs* ...) vs_]
+                     [(xs* ...) (map adorn xs_)]]
+         #'(let [[vs* 'vs*] ...]
+             (term-list (list . os*) (list 'λ (term-list (list . os2*) (list vs* ...)) xs* ...))))]
       
       ; (set! v x)
       [(term-list os_ (list 'set! (? symbol? v_) x_))
@@ -138,26 +129,11 @@
                      [x* (adorn x_)]]
          #'(term-list (list . os*) (list 'set! 'v* x*)))]
       
-      ; (f)
-      [(term-list os_ (list f_))
-       (with-syntax [[os* os_]
-                     [f* (adorn f_)]]
-         #'(term-list (list . os*) (list f*)))]
-      
-      ; (f x)
-      [(term-list os_ (list f_ x_))
+      [(term-list os_ (list f_ xs_ ...))
        (with-syntax [[os* os_]
                      [f* (adorn f_)]
-                     [x* (adorn x_)]]
-         #'(term-list (list . os*) (list f* x*)))]
-      
-      ; (f x y)
-      [(term-list os_ (list f_ x_ y_))
-       (with-syntax [[os* os_]
-                     [f* (adorn f_)]
-                     [x* (adorn x_)]
-                     [y* (adorn y_)]]
-         #'(term-list (list . os*) (list f* x* y*)))]
+                     [(xs* ...) (map adorn xs_)]]
+         #'(term-list (list . os*) (list f* xs* ...)))]
       
       ; value c
       [c_
@@ -175,6 +151,7 @@
           #'x*
           #'(let [[ctxv* ctx*]] x*))))
   
+  
   ; The recursive part of pt/eval; instrument a term with emit statements to make a stepper
   (define (pt/rec term_)
     (with-syntax [[ctx* ctx-var]]
@@ -189,12 +166,13 @@
       [(term-list os_ (list 'begin x_))
        (pt/eval x_)]
       
-      ; (begin x y)
-      [(term-list os_ (list 'begin x_ y_))
+      ; (begin x y ys ...)
+      [(term-list os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[os* os_]
-                     [y* (adorn y_)]]
-         (with-syntax [[xe* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'begin (value->term __) y*)))))]
-                       [ye* (pt/eval (term-list os_ (list 'begin y_)))]]
+                     [y* (adorn y_)]
+                     [(ys* ...) (map adorn ys_)]]
+         (with-syntax [[xe* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'begin (value->term __) y* ys* ...)))))]
+                       [ye* (pt/eval (term-list os_ (cons 'begin (cons y_ ys_))))]]
            #'(begin xe* ye*)))]
       
       ; (if x y z)
@@ -211,27 +189,14 @@
       [(term-list os_ (cons 'lambda rest))
        (pt/rec (term-list os_ (cons 'λ rest)))]
       
-      ; (λ (v) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? v_))) x_))
+      ; (λ (v ...) x ...)
+      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) xs_ ...))
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [os* os_]
-                     [v* v_]]
-         (with-syntax [[body* (pt/eval x_)]
+                     [(vs* ...) vs_]]
+         (with-syntax [[body* (pt/eval (term-list os_ (cons 'begin xs_)))]
                        [term* (if DISABLED #'null (adorn term_))]]
-           #'(let [[fv* (λ (ctx*) (λ (v*) body*))]] ;*
-               (Func term* ; for emitting
-                     fv* ; for internal calls
-                     (fv* unknown-ctx)))))] ; for external calls
-      
-      ; (λ (v1 v2) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? v1_) (? symbol? v2_))) x_))
-       (with-syntax [[(fv*) (generate-temporaries #'(f))]
-                     [os* os_]
-                     [v1* v1_]
-                     [v2* v2_]]
-         (with-syntax [[body* (pt/eval x_)]
-                       [term* (if DISABLED #'null (adorn term_))]]
-           #'(let [[fv* (λ (ctx*) (λ (v1* v2*) body*))]]
+           #'(let [[fv* (λ (ctx*) (λ (vs* ...) body*))]]
                (Func term* ; for emitting
                      fv* ; for internal calls
                      (fv* unknown-ctx)))))] ; for external calls

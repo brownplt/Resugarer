@@ -117,6 +117,8 @@
       (and (symbol-lower-case? sym) (or (not vars) (member sym vars))))
     (define (a-lambda? sym)
       (or (eq? sym 'λ) (eq? sym 'lambda)))
+    (define (gensym-like? sym)
+      #f)
     (define (const-like? sym)
       (or (and (symbol-lower-case? sym) (not (var-like? sym)))
           (and (symbol? sym) (not (symbol-lower-case? sym)))))
@@ -135,6 +137,7 @@
              [(literal-like? p)   (literal p)]
              [(var-like? p)       (pvar p)]
              [(a-lambda? p)       (constant standard-lambda)] ; hack
+             [(gensym-like? p)    (constant 'magic-gensym)]
              [(const-like? p)     (constant p)]
              [else                (fail "Not a valid literal or variable: ~a" p)])]
           [(number? p)  (constant p)]
@@ -310,6 +313,8 @@
         [(_ (literal _))               (fail)]
         [(x (pvar y))                  (singleton-env y x)]
         [((pvar _) _)                  (fail)]
+        [((constant (? symbol? x))
+          (constant 'magic-gensym))    (succeed)] ; workaround for lack of hygene
         [((constant x) (constant x))   (succeed)]
         [((constant _) _)              (fail)]
         [(_ (constant _))              (fail)]
@@ -364,6 +369,7 @@
       (match x
         [(tag t os)       (tag (subs t) os)]
         [(pvar v)         (hash-ref e v)]
+        [(constant 'magic-gensym) (constant (gensym 'magic))] ; workaround for lack of hygene
         [(constant x)     (constant x)]
         [(literal x)      (literal x)]
         [(plist t xs)     (plist t (map subs xs))]
@@ -409,7 +415,7 @@
       (cond [(empty? bindings)
              (fail "Substitute: ellipsis without variables")]
             [(and (empty? list-bindings) (empty? ellipsis-bindings))
-             (fail "Substitute: ellipsis with mismatched variable bindings")]
+             (fail "Substitute: ellipsis with mismatched variable bindings. ~a ~a" e x)]
             [(and (not (empty? list-bindings)) (not (empty? ellipsis-bindings)))
              (fail "Substitute: ellipsis does not contain variables of sufficient depths")]
             [(empty? ellipsis-bindings)
