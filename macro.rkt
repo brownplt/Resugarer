@@ -95,7 +95,6 @@
                                      (list fvr)
                                      (map check-wf-rhs qs)))))]))
 
-      
       (begin (check-wf-lhs (MacroCase-left c))
              (check-wf-rhs (MacroCase-right c))))
     
@@ -111,12 +110,7 @@
              [q2 (MacroCase-right c2)]
              [union (attempt-unification (unify p1 p2))]]
         (when (not (unification-failure? union))
-          ;; TODO: Validate fvar requirements for 2nd static check.
-          (let [[L (substitute (minus union p2) q2)]
-                [R (substitute (minus union p1) q1)]]
-            (display (format "~a ~a\n" (show-pattern L) (show-pattern R)))
-            (when (not (equal? L R))
-              (validation-failure m c1 c2 union))))))
+          (validation-failure m c1 c2 union))))
 
     (begin (check-wf-macro m)
            (for-each validate-pair (all-distinct-pairs (Macro-cases m)))

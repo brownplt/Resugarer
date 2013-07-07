@@ -51,12 +51,10 @@
     [(And x y ys ...)
      (if x (! And y ys ...) #f)])
   
-  (define-macro NotWellFormed
-    [(NotWellFormed x) y])
-  
-  (define-macro Quickand
-    [(Quickand x #t) x]
-    [(Quickand #t y) y])
+  ; Invalid!
+  ;(define-macro Quickand
+  ;  [(Quickand x #t) x]
+  ;  [(Quickand #t y) y])
   
   (define-macro Just
     [(Just x) (begin x)])
