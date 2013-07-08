@@ -24,17 +24,7 @@
                      [(qc ...) (generate-temporaries #'(q ...))])
          #'(let [[pc (sexpr->pattern '(name p ...) #f #f)] ...]
            (let [[qc (sexpr->pattern 'q (set->list (free-vars pc)) #t)] ...]
-             (tag-macro (validate-macro (Macro 'name (list (MacroCase pc qc) ...)))))))]))
-  
-  (define (tag-macro m)
-    (define (wrap-macro i c)
-      (match c
-        [(MacroCase left right)
-         (MacroCase left (tag right (o-macro (Macro-name m) i 'gremlin)))]))
-    (match m
-      [(Macro name cases)
-       (Macro name (map (λ (i) (wrap-macro i (list-ref cases i)))
-                        (range (length cases))))]))
+             (validate-macro (Macro 'name (list (MacroCase pc qc) ...))))))]))
   
   
   (define-syntax-rule (define-macro name case ...)
@@ -138,20 +128,19 @@
   
   (struct NotUnexpandable (pattern) #:transparent)
   
-  (define (expand-macro m x)
-    (define (insert-orig-env e p)
-      (match p
-        [(tag p (o-macro m i _))
-         (tag p (o-macro m i e))]))
+  (define (expand-macro m x [i 0])
+    (define (insert-orig-env e p i)
+      (tag p (o-macro (Macro-name m) i e)))
     (match m
       [(Macro name (list))
        (fail "No matching pattern in macro ~a for ~a" name (show-pattern x))]
       [(Macro name (cons (MacroCase p q) cs))
        (let* [[e (attempt-unification (minus x p))]]
          (if (unification-failure? e)
-             (expand-macro (Macro name cs) x)
-             (insert-orig-env (hash-remove-keys e (free-vars q))
-                              (substitute e q))))]
+             (expand-macro (Macro name cs) x (+ i 1))
+             (tag (substitute e q) (o-macro (Macro-name m)
+                                            i
+                                            (hash-remove-keys e (free-vars q))))))]
       [#f (fail "Could not expand: ~a" (show-pattern x))]))
   
   (define (unexpand-macro x origin)
@@ -160,7 +149,7 @@
        (let* [[c (list-ref (Macro-cases (lookup-macro m)) i)]
               [lhs (MacroCase-left c)]
               [rhs (MacroCase-right c)]]
-         (substitute (hash-union q (minus (tag x (o-macro m i q)) rhs (o-branch))) lhs))]))
+         (substitute (hash-union q (minus x rhs (o-branch))) lhs))]))
   
   (define (expand-pattern e)
     (match e
@@ -173,7 +162,7 @@
              [(t-apply? t)
               (plist t (map expand-pattern ps))]
              [(t-syntax? t)
-              (fail "expand-pattern: extraneous syntax-parens (^)")])]))
+              (fail "expand-pattern: extraneous syntax-parens (^) in ~a" (show-pattern e))])]))
   
   (define (unchecked-unexpand p)
     (define (check-unlittered p)

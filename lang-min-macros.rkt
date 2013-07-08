@@ -37,8 +37,8 @@
 
 (define-macro Or
   [(Or x) (begin x)]
-  [(Or x xs ...)
-   (Let t x (if t t (! Or xs ...)))])
+  [(Or x y ys ...)
+   (Let t x (if t t (! Or y ys ...)))])
 
 (define-macro Letrec
   [(Letrec x e b)
@@ -57,24 +57,16 @@
    (lambda v1 (Lambdas [^ v2 vs ...] body))])
 
 (define-macro Lets
-  [(Lets [^ [^ [^ f x] e]] b)
-   (apply (lambda f b) (lambda x e))]
-  [(Lets [^ [^ [^ f x] e] [^ xs es] ...] b)
-   (apply (lambda f (! Lets [^ [^ xs es] ...] b)) (lambda x e))]
   [(Lets [^ [^ x e]] b)
    (apply (lambda x b) e)]
-  [(Lets [^ [^ x e] [^ xs es] ...] b)
-   (apply (lambda x (! Lets [^ [^ xs es] ...] b)) e)])
+  [(Lets [^ [^ x e] y ys ...] b)
+   (apply (lambda x (! Lets [^ y ys ...] b)) e)])
 
 (define-macro Sets
-  [(Sets [^ [^ [^ f x] e]] b)
-   (begin (set! f (lambda x e)) b)]
-  [(Sets [^ [^ [^ f x] e] xs ...] b)
-   (begin (set! f (lambda x e)) (! Sets [^ xs ...] b))]
   [(Sets [^ [^ x e]] b)
    (begin (set! x e) b)]
-  [(Sets [^ [^ x e] xs ...] b)
-   (begin (set! x e) (! Sets [^ xs ...] b))])
+  [(Sets [^ [^ x e] y ys ...] b)
+   (begin (set! x e) (! Sets [^ y ys ...] b))])
 
 (define-macro Letrecs
   [(Letrecs [^ [^ x e] ...] b)
@@ -85,7 +77,7 @@
 (define-macro Cond
   [(Cond [^ $else x])   (begin x)] ; begin required so that a step is shown!
   [(Cond [^ x y])       (if x y (+ 0 0))]
-  [(Cond [^ x y] z ...) (if x y (! Cond z ...))])
+  [(Cond [^ x y] z zs ...) (if x y (! Cond z zs ...))])
 
 ;(define-macro std-Letrecs () (Let Lets Thunk Force)
 ;  [(std-Letrec [^ [^ var init] ...] body)
@@ -146,70 +138,24 @@
 ;(test-eval (run (Engine [^ "more" : [^ "a" -> "more"]]) "more"
 ;                (cons "a" (cons "a" (cons "a" empty)))))
 
-(define-macro CpsM
-  [(CpsM ("lambda" x y))
-   (! lambda x (lambda k_ (CpsT y k_)))]
-  [(CpsM x)
-   x])
-
-(define-macro CpsT
-  [(CpsT ("apply" x y) k)
-   (! CpsT x (lambda f_ (CpsT y (lambda e_ (apply f_ e_ k)))))]
-  [(CpsT x k)
-   (! apply k (CpsM x))])
-
-(define-macro Cps
-  [(Cps x) (Let halt (lambda h_ h_) (CpsT x halt))])
-
-(define-macro CpsM*
-  [(CpsM* ("lambda" v e))
-   (lambda v (lambda k (CpsC* e k)))]
-  [(CpsM* x) x])
-
-(define-macro CpsC*
-  [(CpsC* ("lambda" v e) c)
-   (apply c (CpsM* ("lambda" v e)))]
-  [(CpsC* ("apply" f e) c)
-   (CpsK* f (lambda f_ (CpsK* e (lambda e_ (apply f_ e_ c)))))]
-  [(CpsC* x c)
-   (apply c (CpsM* x))])
-
-(define-macro CpsK*
-  [(CpsK* ("lambda" v e) k)
-   (apply k (CpsM* ("lambda" v e)))]
-  [(CpsK* ("apply" f e) k)
-   (CpsK* f (lambda f_ (CpsK* e (lambda e_ (apply f_ e_ k)))))]
-  [(CpsK* x c)
-   (apply c (CpsM* x))])
-
-(define-macro Fischer
-  [(Fischer ("lambda" x y))
-   (lambda k (apply k
-     (lambda x (lambda k (apply (Fischer y) (lambda m (apply k m)))))))]
-  [(Fischer ("apply" x y))
-   (lambda k (apply (Fischer x) (lambda m (apply (Fischer y)
-     (lambda n (apply (apply m n) (lambda a (apply k a))))))))]
-  [(Fischer x)
-   (lambda k (apply k x))])
-
 (define-macro Cdavr
   [(Cdavr input)
-   (Letrecs [^ [^ [^ init x]
+   (Letrecs [^ [^ init (λ x
                   (if (eq? x "") #f
                       (Lets [^ [^ head (string-first x)]
                                [^ tail (string-rest x)]]
                             (Cond [^ (eq? "c" head) (! apply more tail)]
-                                  [^ $else #f])))]
-               [^ [^ more x]
+                                  [^ $else #f]))))]
+               [^ more (λ x
                   (if (eq? x "") #f
                       (Lets [^ [^ head (string-first x)]
                                [^ tail (string-rest x)]]
                             (Cond [^ (eq? "a" head) (! apply more tail)]
                                   [^ (eq? "d" head) (! apply more tail)]
                                   [^ (eq? "r" head) (! apply end tail)]
-                                  [^ $else #f])))]
-               [^ [^ end x]
-                  (eq? x "")]]
+                                  [^ $else #f]))))]
+               [^ end (λ x
+                  (eq? x ""))]]
      (! apply init input))])
 
 #;(test-eval
@@ -235,7 +181,7 @@
 (test-eval (Cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ $else (+ 5 6)]))
 (test-eval (+ 1 (Cond [^ #f (+ 1 2)] [^ (Or #f #t) (+ 2 3)])))
 (test-eval (Or (eq? 1 2) (eq? 2 2) (eq? 3 2)))
-(test-eval (Lets [^ [^ [^ f x] (+ x 1)]] (apply f 3)))
+(test-eval (Lets [^ [^ f (λ x (+ x 1))]] (apply f 3)))
 (test-eval (Cdavr "cadr"))
 (test-eval (Cdavr "cdad"))
 (test-eval (Letrecs [^ [^ y x] [^ x 1]] (+ x y)))
@@ -258,21 +204,6 @@
          [^ end $:  "accept"])
    (apply M "cdad")))
 
-;(test-eval (Cps ("apply" ("lambda" x (+ x 1)) 3)))
-;(test-eval (CpsT ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
-;                                   ("lambda" x (+ x 1)))
-;                          (+ 1 2)) (lambda h h)))
-;(test-eval (Cps ("apply" ("lambda" f ("apply" f 1)) ("lambda" x (+ x 1)))))
-;(test-eval (CpsK* ("apply" ("lambda" f ("apply" f 1)) ("lambda" x (+ x 1)))
-;                  (lambda h h)))
-;(test-eval (Lets [^ [^ x 1] [^ y (+ 1 2)]] (+ x y)))
-
-#|
-(test-eval (apply (Fischer ("apply" ("lambda" x (+ x 1)) 3)) (lambda h h)))
-(test-eval (apply (Fischer ("apply" ("apply" ("lambda" f ("lambda" x ("apply" f ("apply" f x))))
-                                   ("lambda" x (+ x 1)))
-                          (+ 1 2))) (lambda h h)))
-|#
 ;(test-eval (std-Letrecs [^ [^ x 1]] x))
 
 #|

@@ -9,10 +9,6 @@
     [(Cond [^ x y] z zs ...) (if x y (! Cond z zs ...))])
   
   (define-macro Let
-;    [(Let [^ [^ [^ f x ...] e]] b)
-;     ((lambda (f) b) (lambda (x ...) e))]
-;    [(Let [^ [^ [^ f x ...] e] [^ xs es] ...] b)
-;     ((lambda (f) (! Let [^ [^ xs es] ...] b)) (lambda (x ...) e))]
     [(Let [^ [^ x e]] b)
      ((lambda (x) b) e)]
     [(Let [^ [^ x e] y ys ...] b)
@@ -23,10 +19,6 @@
      (Let [^ [^ v x]] y)])
   
   (define-macro Set
-;    [(Set [^ [^ [^ f x ...] e]] b)
-;     (begin (set! f (lambda (x ...) e)) b)]
-;    [(Set [^ [^ [^ f x ...] e] xs ...] b)
-;     (begin (set! f (lambda (x ...) e)) (! Set [^ xs ...] b))]
     [(Set [^ [^ x e]] b)
      (begin (set! x e) b)]
     [(Set [^ [^ x e] y ys ...] b)
@@ -51,7 +43,7 @@
     [(And x y ys ...)
      (if x (! And y ys ...) #f)])
   
-  ; Invalid!
+  ; Not well-formed:
   ;(define-macro Quickand
   ;  [(Quickand x #t) x]
   ;  [(Quickand #t y) y])
@@ -195,26 +187,23 @@
   ; steps through (z 0) -> ((λ (v) v) 0) -> 0
   ; instead of    (z 0) -> (y 0) -> (x 0) -> ((λ (v) v) 0) -> 0
   ; steps through (+ 1 2), but never through (+ (+ 0 1) 2).
-  (test-eval
-   (Let [^ [^ m (Automaton
+  (test-eval ((Automaton
                  init
                  [^ init $: [^ "c" $-> more]]
                  [^ more $: [^ "a" $-> more]
                             [^ "d" $-> more]
                             [^ "r" $-> end]]
-                 [^ end $:  "accept"])]]
-        (m "cadr")))
-  (test-eval
-   (Let [^ [^ m (Automaton
+                 [^ end $:  "accept"])
+              "cadr"))
+  (test-eval ((Automaton
                  init
                  [^ init $: [^ "c" $-> more]]
                  [^ more $: [^ "a" $-> more]
                             [^ "d" $-> more]
                             [^ "r" $-> end]]
-                 [^ end $:  "accept"])]]
-        (m "cdad")))
-  (test-eval
-   (Let [^ [^ m (Automaton
+                 [^ end $:  "accept"])
+              "cdad"))
+  (test-eval ((Automaton
                  init
                  [^ init   $: [^ "1" $-> more-1]]
                  [^ more-1 $: [^ "0" $-> more-0]
@@ -222,8 +211,9 @@
                               [^ "." $-> end]]
                  [^ more-0 $: [^ "0" $-> more-0]
                               [^ "1" $-> more-1]]
-                 [^ end    $: "accept"])]]
-        (m "11010.")))
+                 [^ end    $: "accept"])
+              "1101."))
+  
   ;(test-expand-term (Let [^ [^ x 1]] (+ x 1)))
   ;(time-fast-factorial)
   ;(time-fib)

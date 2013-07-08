@@ -44,7 +44,10 @@
                   [u (unexpand-term (value->term val))]]
              (if DEBUG_VARS
                  (term-list (list) (list name ':= (strip-term-tags (value->term val))))
-                 (if (could-not-unexpand? u) name u)))]
+                 (if (could-not-unexpand? u)
+                     (begin (debug "\nCould not unexpand: ~a := ~a\n"
+                                   name (show-term (value->term val) #t)) name)
+                     u)))]
           [(and SHOW_PROC_NAMES (procedure? x) (object-name x))
            (object-name x)]
           [else x]))
@@ -113,14 +116,14 @@
       [(term-list os_ (cons 'lambda rest))
        (adorn (term-list os_ (cons 'λ rest)))]
       
-      ; (λ (v ...) x ...)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) xs_ ...))
+      ; (λ (v ...) x)
+      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) x_))
        (with-syntax [[os* os_]
                      [os2* os2_]
                      [(vs* ...) vs_]
-                     [(xs* ...) (map adorn xs_)]]
+                     [x* (adorn x_)]]
          #'(let [[vs* 'vs*] ...]
-             (term-list (list . os*) (list 'λ (term-list (list . os2*) (list vs* ...)) xs* ...))))]
+             (term-list (list . os*) (list 'λ (term-list (list . os2*) (list vs* ...)) x*))))]
       
       ; (set! v x)
       [(term-list os_ (list 'set! (? symbol? v_) x_))
@@ -189,12 +192,12 @@
       [(term-list os_ (cons 'lambda rest))
        (pt/rec (term-list os_ (cons 'λ rest)))]
       
-      ; (λ (v ...) x ...)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) xs_ ...))
+      ; (λ (v ...) x)
+      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) x_))
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [os* os_]
                      [(vs* ...) vs_]]
-         (with-syntax [[body* (pt/eval (term-list os_ (cons 'begin xs_)))]
+         (with-syntax [[body* (pt/eval x_)]
                        [term* (if DISABLED #'null (adorn term_))]]
            #'(let [[fv* (λ (ctx*) (λ (vs* ...) body*))]]
                (Func term* ; for emitting
@@ -281,6 +284,8 @@
   
   (define (string-rest x)
     (substring x 1))
+  
+  (define plus (λ (x) (λ (y) (+ x y))))
   
   (define NO_EMIT #f)
   (define DISABLED #f)

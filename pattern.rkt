@@ -216,6 +216,17 @@
       [((list) (list))            (list)]
       [((cons x xs) (cons y ys))  (cons (unify x y) (unifies xs ys))]))
   
+  (define (contains-lit? p)
+    (match p
+      [(pvar _) #f]
+      [(literal l) #t]
+      [(constant _) #f]
+      [(plist _ ps) (ormap contains-lit? ps)]
+      [(ellipsis _ h r t) (or (ormap contains-lit? h)
+                              (contains-lit? r)
+                              (ormap contains-lit? t))]
+      [(tag p _) (contains-lit? p)]))
+
   ; Find a minimal pattern z such that for some substitutions s and s',
   ;   z = s x = s' y
   ; Fails on patterns like (a x ...) \/ (y a ...) that may not have a
@@ -228,8 +239,8 @@
         [((literal x) (literal x))    (literal x)]
         [((literal x) y)              (fail)]
         [(x (literal y))              (fail)]
-        [(x (pvar y))                  x]
-        [((pvar x) y)                  y]
+        [(x (pvar y))                 (if (contains-lit? x) (fail) x)]
+        [((pvar x) y)                 (if (contains-lit? y) (fail) y)]
         [((constant x) (constant x))  (constant x)]
         [((constant x) y)             (fail)]
         [(x (constant y))             (fail)]
@@ -483,8 +494,8 @@
   (define-syntax-rule (make-term t)
     (pattern->term (make-pattern t)))
   
-  (define (show-term t)
-    (show-pattern (term->pattern t)))
+  (define (show-term t [keep-tags? #f])
+    (show-pattern (term->pattern t) keep-tags?))
   
   (define (term->sexpr t)
     (pattern->sexpr (term->pattern t)))

@@ -118,9 +118,13 @@
   ; shows : list<any> -> string
   (define (shows xs) (string-join (map show xs) " "))
   
+  ; set-debug! : bool -> void
+  (define (set-debug! x)
+    (set! use-debug x))
+  
   ; use-debug : bool
   (define use-debug #f)
-  
+    
   ; debug : format-str format-arg ... -> void
   (define-syntax-rule (debug str arg ...)
     (when use-debug (display (format str arg ...))))

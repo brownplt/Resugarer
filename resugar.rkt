@@ -11,7 +11,7 @@
    macro-aware-step
    macro-aware-eval
    macro-aware-eval*
-   set-debug-tags! set-debug-steps!)
+   set-debug-tags! set-debug-steps! debug set-debug!)
   
   (define DEBUG_TAGS #f)
   (define (set-debug-tags! x) (set! DEBUG_TAGS x))
@@ -66,11 +66,12 @@
       (begin
         (display str)
         (newline)
+        (when DEBUG_STEPS (newline))
         (set! last-line str))))
     
   (define (show-step t)
     (output-line (if DEBUG_TAGS
-                     (format "~v\n" (term->pattern t))
+                     (show-term t #t)
                      (show-term t))))
     
   (define (show-skip t)
