@@ -15,32 +15,34 @@
 
 ; Prepare a term to be shown
 (define-syntax Adorn
-  (syntax-rules (λ + if set! begin)
+  (syntax-rules (λ if set! begin)
     [(Adorn (begin x y))
      `(begin ,(Adorn x) ,(Adorn y))]
     [(Adorn (λ (v) x))
      (let [[v 'v]] `(λ (v) ,(Adorn x)))]
-    [(Adorn (f x))
-     `(,(Adorn f) ,(Adorn x))]
     [(Adorn (set! v x))
      (let [[v 'v]] `(set! v ,(Adorn x)))]
-    [(Adorn (+ x y))
-     `(+ ,(Adorn x) ,(Adorn y))]
     [(Adorn (if x y z))
      `(if ,(Adorn x) ,(Adorn y) ,(Adorn z))]
+    [(Adorn (f x))
+     `(,(Adorn f) ,(Adorn x))]
+    [(Adorn (f x y))
+     `(,(Adorn f) ,(Adorn x) ,(Adorn y))]
+    #;[(Adorn (+ x y))
+     `(+ ,(Adorn x) ,(Adorn y))]
     [(Adorn x)
      x]))
 
 ; Augment code to show steps
 (define-syntax Eval
-  (syntax-rules (λ + if set! begin)
+  (syntax-rules (λ if set! begin)
     
     [(Eval (begin x y))
      (let [[$x (Call (Eval x) (λ (_) `(begin ,_ ,(Adorn y))))]]
        (emit `(begin ,$x ,(Adorn y)))
        (Eval y))]
     
-    [(Eval (+ x y))
+    #;[(Eval (+ x y))
      (let [[$x (Call (Eval x) (λ (_) `(+ ,_ ,(Adorn y))))]]
        (let [[$y (Call (Eval y) (λ (_) `(+ ,$x ,_)))]]
          (emit `(+ ,$x ,$y))
@@ -66,25 +68,35 @@
          (if (Func? $f)
              ($f $x)
              (Call ($f $x) (λ (_) `(?? ,_))))))]
+    
+    [(Eval (f x y))
+     (let [[$f (Call (Eval f) (λ (_) `(,_ ,(Adorn x) ,(Adorn y))))]]
+       (let [[$x (Call (Eval x) (λ (_) `(,$f ,_ ,(Adorn y))))]]
+         (let [[$y (Call (Eval y) (λ (_) `(,$f ,$x ,_)))]]
+           (emit `(,$f ,$x ,$y))
+           (if (Func? $f)
+               ($f $x $y)
+               (Call ($f $x $y) (λ (_) `(?? ,_)))))))]
 
     [(Eval x) x]))
 
 
-(define-syntax-rule (Call x c)
-  (begin (push c)
-         (set! $val x)
-         (pop)
-         $val))
+(define (show x)
+  (cond [(Func? x) (show (Func-term x))]
+        [(list? x) (map show x)]
+        [(procedure? x) (object-name x)]
+        [else x]))
 
 ;;; Contexts ;;;
 
 (define $val 'gremlin)
 (define $ctx (list))
 
-(define (show x)
-  (cond [(Func? x) (show (Func-term x))]
-        [(list? x) (map show x)]
-        [else x]))
+(define-syntax-rule (Call x c)
+  (begin (push c)
+         (set! $val x)
+         (pop)
+         $val))
 
 (define (emit x [ctx $ctx])
   (if (empty? ctx)
