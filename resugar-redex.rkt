@@ -11,7 +11,7 @@
    macro-aware-eval ;TODO
    term->redex make-term
    ;term->pattern pattern->term ;For testing !!!
-   set-debug-store! set-debug-tags! set-debug-steps!
+   ;set-debug-store! set-debug-tags! set-debug-steps!
    )
   
   (define DEBUG_STORE #f)

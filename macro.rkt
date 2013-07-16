@@ -181,10 +181,9 @@
                           [(o-branch)
                            (match p2
                              ; Fail to unexpand if a macro is tainted
-                             #;[(tag p3 (o-macro m n))
-                              (tag p3 (o-macro m n))]
                              [p2 (tag (rec p2) o)])]
-                          [(o-branch) (tag (rec p2) o)])]
+                          [(o-branch) (tag (rec p2) o)]
+                          [(o-external) (tag (rec p2) o)])]
         [_              (raise (NotUnexpandable p))]))
     (check-unlittered (rec p)))
   

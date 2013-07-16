@@ -1,5 +1,6 @@
 #lang racket
 
+(require profile)
 (require "resugar.rkt")
 (require "resugar-racket.rkt")
 
@@ -26,7 +27,7 @@
 
   (define-macro Letrec
     [(Letrec [^ [^ x e] ...] b)
-     (Let [^ [^ x 0] ...]
+     (Let [^ [^ x (void)] ...]
           (Set [^ [^ x e] ...]
                b))])
   
@@ -140,7 +141,8 @@
   
   (set-debug-steps! #f)
   (set-debug-tags! #f)
-  (set-debug-vars! #t)
+  (set-debug-vars! #f)
+  (set-hide-external-calls! #f)
   
   (test-eval 3)
   (test-eval (+ 1 2))
@@ -173,7 +175,7 @@
   (test-eval (Or (zero? 3) (sub1 3)))
   (test-eval (And (not (zero? 3)) (sub1 3)))
   (test-eval (! + 1 2))
-  (test-eval (Letrec [^ [^ f (λ (n) (if (zero? n) 77 (f (+ 0 0))))]] (f (+ 0 0))))
+  (test-eval (Letrec [^ [^ f (λ (n) (if (zero? n) 77 (f (! + 0 0))))]] (f (+ 1 2))))
   
   (test-eval (Letrec [^ [^ is-even? (λ (n) (Or (zero? n) (is-odd? (sub1 n))))]
                         [^ is-odd? (λ (n) (And (not (zero? n)) (is-even? (sub1 n))))]]
@@ -217,18 +219,16 @@
                  [^ end    $: "accept"])
               "1101."))
   
-  
-  
-  ;(test-expand-term (Let [^ [^ x 1]] (+ x 1)))
   (time-fast-factorial)
   (time-fib)
   (time-factorial)
-  (test-eval (Let [^ [^ f (λ (x) (! + x 1))]] (f (+ 2 3))))
+
+  (profile-thunk (λ () (test-silent-eval
+    (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
+                                 1
+                                 (+ (fib (- n 1)) (fib (- n 2)))))]]
+            (fib 20)))))
   #|
-  (profile-thunk (λ () (test-eval (Letrec [^ [^ [^ fib n] (if (Or (eq? n 0) (eq? n 1))
-                                               1
-                                               (+ (fib (- n 1)) (fib (- n 2))))]]
-                           (fib 22)))))
   (test-expand-term (Let [^ [^ x 1]] (+ x 1)))
   
   (test-expand-term (Letrec [^ [^ [^ fib n] (if (Or (eq? n 0) (eq? n 1))

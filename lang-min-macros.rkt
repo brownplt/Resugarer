@@ -71,8 +71,7 @@
 (define-macro Letrecs
   [(Letrecs [^ [^ x e] ...] b)
    (Lets [^ [^ x 0] ...]
-         (Sets [^ [^ x e] ...]
-               b))])
+         (begin (set! x e) ... b))])
 
 (define-macro Cond
   [(Cond [^ $else x])   (begin x)] ; begin required so that a step is shown!
@@ -167,8 +166,8 @@
                (cons "a" (cons "a" (cons "a" empty)))]]
          (run run-fun an-Engine "more" the-input))))
 
-(set-debug-steps! #f)
-(set-debug-tags! #f)
+;(set-debug-steps! #f)
+;(set-debug-tags! #f)
 
 (test-eval (+ 1 2))
 (test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
@@ -203,6 +202,9 @@
                     [^ "r" $-> end]]
          [^ end $:  "accept"])
    (apply M "cdad")))
+
+(test-eval (Letrecs [^ [^ f (λ n (if (eq? n 0) 77 (apply f (! + 0 0))))]]
+                    (apply f (+ 1 2))))
 
 ;(test-eval (std-Letrecs [^ [^ x 1]] x))
 

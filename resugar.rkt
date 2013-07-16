@@ -6,7 +6,7 @@
   (provide
    define-macro
    make-term test-expand term-list term-list? term-list-tags term-list-terms term-id
-   expand-term unexpand-term show-term term->sexpr strip-term-tags
+   expand-term unexpand-term show-term term->sexpr strip-term-tags (struct-out o-external)
    could-not-unexpand?
    language language-name language-expr->term language-term->expr language-step language-show-expr
    macro-aware-step

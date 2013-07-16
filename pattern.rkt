@@ -11,7 +11,8 @@
    (struct-out inter-list) (struct-out inter-ellipsis)
    (struct-out CantUnify) (struct-out CantMatch) (struct-out OccursCheck)
    (struct-out t-macro) (struct-out t-syntax) (struct-out t-apply)
-   (struct-out o-macro) (struct-out o-branch) (struct-out tag)
+   (struct-out o-macro) (struct-out o-branch) (struct-out o-external)
+   (struct-out tag)
    ; testing:
    show-pattern
    inter-list-envs free-vars replace bind empty-env singleton-env)
@@ -51,6 +52,7 @@
   
   (struct o-macro (m c q) #:transparent)
   (struct o-branch () #:transparent)
+  (struct o-external () #:transparent)
   
   ; Inter : Pattern
   ;       | inter-list (I1 ... In)
@@ -172,6 +174,7 @@
     (define (orig->sexpr o)
       (match o
         [(o-branch) 'o-branch]
+        [(o-external) 'o-external]
         [(o-macro m c q) (list 'o-macro m c q)]))
     (match x
       [(tag x o)           (if keep-tags?

@@ -14,11 +14,11 @@
     #:property prop:procedure
     (λ (self . args) (apply (Func-func self) args)))
   
-  (define-setting SHOW_PROC_NAMES     set-show-proc-names!   #t)
-  (define-setting DEBUG_VARS          set-debug-vars!        #f)
-  (define-setting SHOW_EXTERNAL_CALLS set-show-external-call #t)
-  (define-setting DEBUG_STEPS         set-debug-steps!       #f)
-  (define-setting DEBUG_TAGS          set-debug-tags!        #f)
+  (define-setting SHOW_PROC_NAMES     set-show-proc-names!     #t)
+  (define-setting DEBUG_VARS          set-debug-vars!          #f)
+  (define-setting HIDE_EXTERNAL_CALLS set-hide-external-calls! #t)
+  (define-setting DEBUG_STEPS         set-debug-steps!         #f)
+  (define-setting DEBUG_TAGS          set-debug-tags!          #f)
   
   
   ;;; Keeping track of the stack ;;;
@@ -31,9 +31,12 @@
   
   (define ($push! x)
     (set! $stk (cons x $stk)))
-  
+    
   (define ($pop!)
     (set! $stk (cdr $stk)))
+  
+  (define ($reset!)
+    (set! $stk (list)))
   
   
   ;;; Emitting Terms ;;;
@@ -45,10 +48,11 @@
 
   (define (display-skip t)
     (when DEBUG_STEPS
-      (display (format "SKIP: ~a\n" (show-term t DEBUG_TAGS)))))
+      (display (format "SKIP: ~a\n\n" (show-term t DEBUG_TAGS)))))
   
   (define (display-step t)
-    (display (format "~a\n" (show-term t DEBUG_TAGS))))
+    (display (format "~a\n" (show-term t DEBUG_TAGS)))
+    (when DEBUG_STEPS (newline)))
   
   (define (emit x)
     (let* [[t (value->term (reconstruct-stack x))]
@@ -64,24 +68,36 @@
            (term-list (term-list-tags x) (map value->term (term-list-terms x)))]
           [(Var? x)
            (let* [[name (Var-name x)]
-                  [val  (Var-value x)]
-                  [u    (unexpand-term (value->term val))]]
+                  [term (value->term (Var-value x))]
+                  [u    (unexpand-term term)]]
              (if DEBUG_VARS
-                 (term-list (list) (list name ':= (value->term val)))
+                 (term-list (list) (list name ':= term))
                  (if (could-not-unexpand? u) name u)))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (object-name x)]
           [else
            x]))
   
+  ; Slow!
+  (define ($emit-id v)
+    (let* [[name (Var-name v)]
+           [term (value->term (Var-value v))]
+           [u (unexpand-term term)]]
+      (if (could-not-unexpand? u) ($emit v) (void))))
+  
   
   ;;; Annotating Racket Programs to Emit ;;;
   
+  ; Top level
   (define (annotate-term term [emit emit])
     (set! $emit emit)
     (with-syntax [[t* (annot/eval term)]]
-      #'(let [[$result t*]] ($emit $result) $result)))
+      #'(begin ($reset!)
+               (let [[$result t*]]
+                 ($emit $result)
+                 $result))))
   
+  ; Push a frame onto the stack (and pop it after)
   (define (annot/frame expr_ frame_)
     (with-syntax [[expr* expr_]
                   [frame* frame_]]
@@ -90,6 +106,7 @@
                ($pop!)
                $val)))
   
+  ; Annotate function argument expressions
   (define (annot/args xs_ os_ fv_ xvs0_ xvs_ xts_)
     (if (empty? xs_)
         empty
@@ -101,17 +118,19 @@
                              #'(λ (__) (term-list (list . os*) (list fv* xvs0* ... __ xts* ...))))
                 (annot/args (cdr xs_) os_ fv_ (append xvs0_ (list (car xvs_))) (cdr xvs_) (cdr xts_))))))
   
+  ; Call external code
   (define (annot/extern-call func_ args_)
     (with-syntax [[func* func_]
                   [(args* ...) args_]]
       (annot/frame #'(func* args* ...)
-                   #'(λ (__) (term-list (list) (list '?? __))))))
+                   #'(λ (__) (term-id (list (o-external)) __)))))
   
+  ; Call a function, which may have been annotated or not.
   (define (annot/call func_ args_)
     (with-syntax [[func* func_]
                   [(args* ...) args_]
                   [extern-call* (annot/extern-call func_ args_)]]
-      (if SHOW_EXTERNAL_CALLS
+      (if HIDE_EXTERNAL_CALLS
           #'(if (Func? func*)
                 (func* args* ...)
                 extern-call*)
@@ -270,22 +289,13 @@
                ($emit (term-list (list . os*) (list fv* xvs* ...)))
                body*))))]
       
-      ; (f)
-      [(term-list os_ (list f_))
-       (with-syntax [[(fv*) (generate-temporaries #'(f))]
-                     [os* os_]
-                     [ft* (adorn f_)]]
-         (with-syntax [[f* (annot/frame (annot/eval f_)
-                                      #'(λ (__) (term-list (list . os*) (list __))))]
-                       [body* (annot/call #'fv* #'(list))]]
-           #'(let [[fv* f*]]
-               ($emit (term-list (list . os*) (list fv*)))
-               body*)))]
-
       ; value x
       [x_
        (with-syntax [[x* x_]]
-         #'x*)]
+         (if (symbol? x_)
+             #'(begin ($emit-id (Var 'x* x*))
+                      x*)
+             #'x*))]
       ))
   
   (define-syntax-rule (test-term t)
