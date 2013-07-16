@@ -294,6 +294,10 @@
               (hash-remove-keys (make-immutable-hash '((1 . 2) (2 . 3) (3 . 4)))
                                 (set '1 '3)))
 
+(check-equal? (get-define-setting-test-setting) #f)
+(set-define-setting-test-setting! 24738)
+(check-equal? (get-define-setting-test-setting) 24738)
+
 (display "ok\n")
 
 ;;;;;;;;;;;;

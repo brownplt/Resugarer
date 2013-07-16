@@ -132,4 +132,16 @@
   ; fail : format-str format-arg ... -> void
   (define-syntax-rule (fail str arg ...)
     (error (format str arg ...)))
+  
+  ; define-setting : symbol symbol any
+  ; Define a global mutable setting, e.g., for debugging
+  (define-syntax-rule (define-setting setting-name setter-id init-val)
+    (begin
+      (define setting-name init-val)
+      (define (setter-id new-val)
+        (set! setting-name new-val))))
+  
+  ; The define-setting test, which tests setting settings with define-setting.
+  (define-setting define-setting-test-setting set-define-setting-test-setting! #f)
+  (define (get-define-setting-test-setting) define-setting-test-setting)
 )

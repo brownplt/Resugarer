@@ -1,87 +1,128 @@
 (module resugar-racket racket
   (provide (all-defined-out))
+  (require "utility.rkt")
   (require "resugar.rkt")
   (require profile)
 
-  ; See debug-racket.rkt
+  ; See debug-racket-3.rkt
   ; for a much cleaner presentation of the debugging approach.
   
-  ; TODO: hook up macro validation
-  ; TODO: add 'let' language primitive to stepper
-
+  ; This code is OK to run in sequence; not so good concurrently.
+  
   (define-struct Var (name value) #:transparent)
-  (define-struct Func (term annot bare)
+  (define-struct Func (func term)
     #:property prop:procedure
-    (λ (self . args) (apply (Func-bare self) args)))
+    (λ (self . args) (apply (Func-func self) args)))
   
-  (define (atomic? t) (or (symbol? t)
-                          (number? t)
-                          (boolean? t)
-                          (string? t)
-                          (procedure? t)
-                          (pair? t)
-                          (null? t)
-                          (void? t)))
+  (define-setting SHOW_PROC_NAMES     set-show-proc-names!   #t)
+  (define-setting DEBUG_VARS          set-debug-vars!        #f)
+  (define-setting SHOW_EXTERNAL_CALLS set-show-external-call #t)
+  (define-setting DEBUG_STEPS         set-debug-steps!       #f)
+  (define-setting DEBUG_TAGS          set-debug-tags!        #f)
   
-  (define SHOW_PROC_NAMES #t)
-  (define DEBUG_VARS #f)
-  (define (set-debug-vars! x)
-    (set! DEBUG_VARS x))
   
-  (define-syntax-rule (call-func f ctx args ...)
-    (if (Func? f)
-        (((Func-annot f) ctx) args ...)
-        (f args ...)))
+  ;;; Keeping track of the stack ;;;
+  
+  (define $emit 'gremlin)
+  (define $val 'gremlin)
+  (define $stk (list))
+  (define ($set-val! v)
+    (set! $val v))
+  
+  (define ($push! x)
+    (set! $stk (cons x $stk)))
+  
+  (define ($pop!)
+    (set! $stk (cdr $stk)))
+  
+  
+  ;;; Emitting Terms ;;;
+  
+  (define (reconstruct-stack x [stk $stk])
+    (if (empty? stk)
+        x
+        (reconstruct-stack ((car stk) x) (cdr stk))))
 
+  (define (display-skip t)
+    (when DEBUG_STEPS
+      (display (format "SKIP: ~a\n" (show-term t DEBUG_TAGS)))))
+  
+  (define (display-step t)
+    (display (format "~a\n" (show-term t DEBUG_TAGS))))
+  
+  (define (emit x)
+    (let* [[t (value->term (reconstruct-stack x))]
+           [u (unexpand-term t)]]
+      (if (could-not-unexpand? u)
+          (display-skip t)
+          (display-step u))))
+  
   (define (value->term x)
-    (cond [DISABLED
-           #f]
-          [(Func? x)
-           (Func-term x)]
+    (cond [(Func? x)
+           (value->term (Func-term x))]
+          [(term-list? x)
+           (term-list (term-list-tags x) (map value->term (term-list-terms x)))]
           [(Var? x)
            (let* [[name (Var-name x)]
-                  [val (Var-value x)]
-                  [u (unexpand-term (value->term val))]]
+                  [val  (Var-value x)]
+                  [u    (unexpand-term (value->term val))]]
              (if DEBUG_VARS
-                 (term-list (list) (list name ':= (strip-term-tags (value->term val))))
-                 (if (could-not-unexpand? u)
-                     (begin (debug "\nCould not unexpand: ~a := ~a\n"
-                                   name (show-term (value->term val) #t)) name)
-                     u)))]
-          [(and SHOW_PROC_NAMES (procedure? x) (object-name x))
+                 (term-list (list) (list name ':= (value->term val)))
+                 (if (could-not-unexpand? u) name u)))]
+          [(and SHOW_PROC_NAMES (procedure? x))
            (object-name x)]
-          [else x]))
-  
-  (define (term->racket term)
-    (λ (emit) (pt/top term empty-ctx emit)))
-  
-  (define ctx-var (car (generate-temporaries #'(ctx))))
-  (define emit-var (car (generate-temporaries #'(emit))))
-  
-  (define (pt/top term_ ctx_ emit_)
-    (with-syntax [[ctxv* ctx-var]
-                  [emitv* emit-var]
-                  [ctx* ctx_]
-                  [emit* emit_]
-                  [term* (pt/eval term_)]]
-      #'(let [[ctxv* ctx*] [emitv* emit*]] term*)))
-  
-  (define (pt/eval term_)
-    (with-syntax [[ctxv* ctx-var]
-                  [emitv* emit-var]
-                  [term* (adorn term_)]
-                  [rest* (pt/rec term_)]]
-      (if DISABLED
-          #'rest*
-          #'(begin (emitv* (ctxv* term*))
-                   rest*))))
-  
-  (define empty-ctx (λ (x) x))
-  (define (unknown-ctx ctx)
-    (λ (x) (ctx (term-list (list) (list '?? x)))))
+          [else
+           x]))
   
   
-  ; Prepare a term for printing
+  ;;; Annotating Racket Programs to Emit ;;;
+  
+  (define (annotate-term term [emit emit])
+    (set! $emit emit)
+    (with-syntax [[t* (annot/eval term)]]
+      #'(let [[$result t*]] ($emit $result) $result)))
+  
+  (define (annot/frame expr_ frame_)
+    (with-syntax [[expr* expr_]
+                  [frame* frame_]]
+      #'(begin ($push! frame*)
+               ($set-val! expr*)
+               ($pop!)
+               $val)))
+  
+  (define (annot/args xs_ os_ fv_ xvs0_ xvs_ xts_)
+    (if (empty? xs_)
+        empty
+        (with-syntax [[os* os_]
+                      [fv* fv_]
+                      [(xvs0* ...) xvs0_]
+                      [(xts* ...) (cdr xts_)]]
+          (cons (annot/frame (annot/eval (car xs_))
+                             #'(λ (__) (term-list (list . os*) (list fv* xvs0* ... __ xts* ...))))
+                (annot/args (cdr xs_) os_ fv_ (append xvs0_ (list (car xvs_))) (cdr xvs_) (cdr xts_))))))
+  
+  (define (annot/extern-call func_ args_)
+    (with-syntax [[func* func_]
+                  [(args* ...) args_]]
+      (annot/frame #'(func* args* ...)
+                   #'(λ (__) (term-list (list) (list '?? __))))))
+  
+  (define (annot/call func_ args_)
+    (with-syntax [[func* func_]
+                  [(args* ...) args_]
+                  [extern-call* (annot/extern-call func_ args_)]]
+      (if SHOW_EXTERNAL_CALLS
+          #'(if (Func? func*)
+                (func* args* ...)
+                extern-call*)
+          #'(func* args* ...))))
+
+  (define-syntax-rule (stack-frame (hole origins) expr)
+    (λ (hole) (term-list (list . origins) expr)))
+  
+  
+  
+  ; Prepare a term to be shown
   (define (adorn term_)
     (match term_
       
@@ -132,6 +173,7 @@
                      [x* (adorn x_)]]
          #'(term-list (list . os*) (list 'set! 'v* x*)))]
       
+      ; (f xs ...)
       [(term-list os_ (list f_ xs_ ...))
        (with-syntax [[os* os_]
                      [f* (adorn f_)]
@@ -142,139 +184,121 @@
       [c_
        (with-syntax [[c* c_]]
          (if (symbol? c_)
-             #'(value->term (Var 'c* c*))
-             #'(value->term c*)))]))
+             #'(Var 'c* c*)
+             #'c*))]))
   
   
-  (define (pt/rec/ctx term_ ctx_)
-    (with-syntax [[ctxv* ctx-var]
-                  [ctx* ctx_]
-                  [x* (pt/rec term_)]]
-      (if DISABLED
-          #'x*
-          #'(let [[ctxv* ctx*]] x*))))
   
-  
-  ; The recursive part of pt/eval; instrument a term with emit statements to make a stepper
-  (define (pt/rec term_)
-    (with-syntax [[ctx* ctx-var]]
+  (define (annot/eval term_)
     (match term_
       
       [(term-id os_ x_)
        (with-syntax [[os* os_]
                      [x* (adorn x_)]]
-         (pt/rec/ctx x_ #'(λ (__) (ctx* (term-id (list . os*) x*)))))]
+         (annot/frame (annot/eval x_) #'(λ (__) (term-id (list . os*) x*))))]
       
       ; (begin x)
       [(term-list os_ (list 'begin x_))
-       (pt/eval x_)]
+       (annot/eval x_)]
       
       ; (begin x y ys ...)
       [(term-list os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[os* os_]
-                     [y* (adorn y_)]
-                     [(ys* ...) (map adorn ys_)]]
-         (with-syntax [[xe* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'begin (value->term __) y* ys* ...)))))]
-                       [ye* (pt/eval (term-list os_ (cons 'begin (cons y_ ys_))))]]
-           #'(begin xe* ye*)))]
+                     [(yts* ...) (map adorn (cons y_ ys_))]
+                     [(xv*) (generate-temporaries #'(x))]]
+         (with-syntax [[x* (annot/frame (annot/eval x_)
+                                        #'(λ (__) (term-list (list . os*) (list 'begin __ yts* ...))))]
+                       [ys* (annot/eval (term-list os_ (cons 'begin (cons y_ ys_))))]]
+           #'(let [[xv* x*]]
+               ($emit (term-list (list . os*) (list 'begin xv* yts* ...)))
+               ys*)))]
       
       ; (if x y z)
       [(term-list os_ (list 'if x_ y_ z_))
        (with-syntax [[os* os_]
-                     [y* (adorn y_)]
-                     [z* (adorn z_)]]
-         (with-syntax [[x* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'if __ y* z*)))))]
-                       [ry* (pt/eval y_)]
-                       [rz* (pt/eval z_)]]
-           #'(if x* ry* rz*)))]
+                     [yt* (adorn y_)]
+                     [zt* (adorn z_)]
+                     [y* (annot/eval y_)]
+                     [z* (annot/eval z_)]
+                     [(xv*) (generate-temporaries #'(x))]]
+         (with-syntax [[test* (annot/frame (annot/eval x_)
+                                           #'(λ (__) (term-list (list . os*) (list 'if __ yt* zt*))))]]
+           #'(let [[xv* test*]]
+               ($emit (term-list (list . os*) (list 'if xv* yt* zt*)))
+               (if xv* y* z*))))]
       
       ; (lambda (v) x)
       [(term-list os_ (cons 'lambda rest))
-       (pt/rec (term-list os_ (cons 'λ rest)))]
+       (annot/eval (term-list os_ (cons 'λ rest)))]
       
       ; (λ (v ...) x)
       [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) x_))
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [os* os_]
                      [(vs* ...) vs_]]
-         (with-syntax [[body* (pt/eval x_)]
-                       [term* (if DISABLED #'null (adorn term_))]]
-           #'(let [[fv* (λ (ctx*) (λ (vs* ...) body*))]]
-               (Func term* ; for emitting
-                     fv* ; for internal calls
-                     (fv* unknown-ctx)))))] ; for external calls
+         (with-syntax [[body* (annot/eval x_)]
+                       [term* (adorn term_)]]
+           #'(Func (λ (vs* ...) body*) term*)))]
       
       ; (set! v x)
       [(term-list os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[os* os_]
-                     [v* v_]]
-         (with-syntax [[x* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list 'set! 'v* (value->term __))))))]]
-           #'(set! v* x*)))]
+                     [v* v_]
+                     [(xv*) (generate-temporaries #'(x))]]
+         (with-syntax [[x* (annot/frame (annot/eval x_)
+                                        #'(λ (__) (term-list (list . os*) (list 'set! 'v* __))))]]
+           #'(let [[xv* x*]]
+               ($emit (term-list (list . os*) (list 'set! 'v* xv*)))
+               (set! v* xv*))))]
+      
+      ; (f xs ...)
+      [(term-list os_ (list f_ xs_ ...))
+       (let [[xvs_ (map (λ (_) (with-syntax [[(v) (generate-temporaries #'(x))]] #'v)) xs_)]]
+       (with-syntax [[(fv*) (generate-temporaries #'(f))]
+                     [(xvs* ...) xvs_]
+                     [os* os_]
+                     [ft* (adorn f_)]
+                     [(xts* ...) (map adorn xs_)]]
+         (with-syntax [[f* (annot/frame (annot/eval f_)
+                                        #'(λ (__) (term-list (list . os*) (list __ xts* ...))))]
+                       [(xs* ...) (annot/args xs_ os_ #'fv* (list)
+                                              xvs_ (syntax->datum #'(xts* ...)))]
+                       [body* (annot/call #'fv* #'(xvs* ...))]]
+           #'(let* [[fv* f*]
+                    [xvs* xs*]
+                    ...]
+               ($emit (term-list (list . os*) (list fv* xvs* ...)))
+               body*))))]
       
       ; (f)
       [(term-list os_ (list f_))
-       (with-syntax [[(fv* rv*) (generate-temporaries #'(f r))]
+       (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [os* os_]
-                     [f* (adorn f_)]]
-         (with-syntax [[f* (pt/rec/ctx f_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term __))))))]
-                       [r* (pt/eval #'rv*)]]
-           #'(let* [[fv* f*]
-                    [rv* (call-func fv* ctx*)]]
-               r*)))]
-      
-      ; (f x)
-      [(term-list os_ (list f_ x_))
-       (with-syntax [[(fv* xv* rv*) (generate-temporaries #'(f x r))]
-                     [os* os_]
-                     [f* (adorn f_)]
-                     [x* (adorn x_)]]
-         (with-syntax [[f* (pt/rec/ctx f_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term __) x*)))))]
-                       [x* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term fv*) (value->term __))))))]
-                       [r* (pt/eval #'rv*)]]
-           #'(let* [[fv* f*]
-                    [xv* x*]
-                    [rv* (call-func fv* ctx* xv*)]]
-               r*)))]
-      
-      ; (f x y)
-      [(term-list os_ (list f_ x_ y_))
-       (with-syntax [[(fv* xv* yv* rv*) (generate-temporaries #'(f x y r))]
-                     [os* os_]
-                     [f* (adorn f_)]
-                     [x* (adorn x_)]
-                     [y* (adorn y_)]]
-         (with-syntax [[f* (pt/rec/ctx f_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term __) x* y*)))))]
-                       [x* (pt/rec/ctx x_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term fv*) (value->term __) y*)))))] ;*
-                       [y* (pt/rec/ctx y_ #'(λ (__) (ctx* (term-list (list . os*) (list (value->term fv*) (value->term xv*) __)))))]
-                       [r* (pt/eval #'rv*)]]
-           #'(let* [[fv* f*]
-                    [xv* x*]
-                    [yv* y*]
-                    [rv* (call-func fv* ctx* xv* yv*)]]
-               r*)))]
-      
+                     [ft* (adorn f_)]]
+         (with-syntax [[f* (annot/frame (annot/eval f_)
+                                      #'(λ (__) (term-list (list . os*) (list __))))]
+                       [body* (annot/call #'fv* #'(list))]]
+           #'(let [[fv* f*]]
+               ($emit (term-list (list . os*) (list fv*)))
+               body*)))]
+
       ; value x
       [x_
        (with-syntax [[x* x_]]
          #'x*)]
-      )))
-  
-  (define (emit x)
-    (λ (x) (display (format "~a\n" x))))
+      ))
   
   (define-syntax-rule (test-term t)
-    (syntax->datum ((term->racket (make-term t)) emit)))
+    (syntax->datum (annotate-term (make-term t))))
   
   (define-syntax-rule (test-expand-term t)
-    (syntax->datum ((term->racket (expand-term (make-term t))) emit)))
-  
-  (define (steps term emit)
-    (eval (term emit)))
+    (syntax->datum (annotate-term (expand-term (make-term t)))))
   
   (define-syntax-rule (test-eval t)
-    (if NO_EMIT
-        (macro-aware-eval* term->racket steps (make-term t) (λ _ (void)))
-        (macro-aware-eval* term->racket steps (make-term t))))
+    (eval (annotate-term (expand-term (make-term t))) (current-namespace)))
+  
+  (define-syntax-rule (test-silent-eval t)
+    (eval (annotate-term (expand-term (make-term t)) (λ (x) (void))) (current-namespace)))
   
   (define (my-external-function f)
     (f (f 17)))
@@ -284,12 +308,4 @@
   
   (define (string-rest x)
     (substring x 1))
-  
-  (define plus (λ (x) (λ (y) (+ x y))))
-  
-  (define NO_EMIT #f)
-  (define DISABLED #f)
-  (set-debug-steps! #f)
-  (set-debug-tags! #f)
-  (set-debug-vars! #f)
 )

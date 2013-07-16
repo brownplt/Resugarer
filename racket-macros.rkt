@@ -112,9 +112,9 @@
                                    1
                                    (+ (fib (- n 1)) (fib (- n 2)))))))
             (begin (fib 20) (void))))
-    (time (test-eval (Letrec [^ [^ [^ fib n] (if (Or (eq? n 0) (eq? n 1))
-                                                 1
-                                                 (+ (fib (- n 1)) (fib (- n 2))))]]
+    (time (test-silent-eval (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
+                                                  1
+                                                  (+ (fib (- n 1)) (fib (- n 2)))))]]
                              (begin (fib 20) (void))))))
   
   (define (time-factorial)
@@ -123,9 +123,9 @@
                                          1
                                          (* n (factorial (- n 1)))))))
             (begin (factorial 10000) (void))))
-    (time (test-eval (Letrec [^ [^ [^ factorial n] (if (eq? n 0)
+    (time (test-silent-eval (Letrec [^ [^ factorial (λ (n) (if (eq? n 0)
                                                        1
-                                                       (* n (factorial (- n 1))))]]
+                                                       (* n (factorial (- n 1)))))]]
                              (begin (factorial 10000) (void))))))
   
   (define (time-fast-factorial)
@@ -134,12 +134,15 @@
                                 (if (eq? n 0) prod
                                     (factorial (- n 1) (* n prod))))))
             (begin (factorial 10000 1) (void))))
-    (time (test-eval (Letrec [^ [^ [^ factorial n prod]
-                                   (if (eq? n 0) prod (factorial (- n 1) (* n prod)))]]
+    (time (test-silent-eval (Letrec [^ [^ factorial (λ (n prod)
+                                   (if (eq? n 0) prod (factorial (- n 1) (* n prod))))]]
                              (begin (factorial 10000 1) (void))))))
   
+  (set-debug-steps! #f)
+  (set-debug-tags! #f)
+  (set-debug-vars! #t)
+  
   (test-eval 3)
-  (test-term (+ 1 2))
   (test-eval (+ 1 2))
   (test-eval (+ (+ 1 2) 4))
   (test-eval (+ 1 (+ 2 4)))
@@ -214,10 +217,13 @@
                  [^ end    $: "accept"])
               "1101."))
   
+  
+  
   ;(test-expand-term (Let [^ [^ x 1]] (+ x 1)))
-  ;(time-fast-factorial)
-  ;(time-fib)
-  ;(time-factorial)
+  (time-fast-factorial)
+  (time-fib)
+  (time-factorial)
+  (test-eval (Let [^ [^ f (λ (x) (! + x 1))]] (f (+ 2 3))))
   #|
   (profile-thunk (λ () (test-eval (Letrec [^ [^ [^ fib n] (if (Or (eq? n 0) (eq? n 1))
                                                1

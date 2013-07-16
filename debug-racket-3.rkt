@@ -11,7 +11,8 @@
          #''z*))]))
 
 (define-struct Func (func term)
-  #:property prop:procedure (λ (self . args) (apply (Func-func self) args)))
+  #:property prop:procedure
+  (λ (self . args) (apply (Func-func self) args)))
 
 ; Prepare a term to be shown
 (define-syntax Adorn
