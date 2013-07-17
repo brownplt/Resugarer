@@ -219,15 +219,26 @@
                  [^ end    $: "accept"])
               "1101."))
   
+  (show-term (expand-term (make-term (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
+                                                  1
+                                                  (+ (fib (- n 1)) (fib (- n 2)))))]]
+                             (begin (fib 20) (void))))))
+  
+  (test-term (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
+                                                  1
+                                                  (+ (fib (- n 1)) (fib (- n 2)))))]]
+                             (begin (fib 20) (void))))
+  
   (time-fast-factorial)
   (time-fib)
   (time-factorial)
 
-  (profile-thunk (λ () (test-silent-eval
+  ; Racket profiler totally unhelpful within eval
+  #;(profile-silent-eval
     (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
                                  1
                                  (+ (fib (- n 1)) (fib (- n 2)))))]]
-            (fib 20)))))
+            (fib 20)))
   #|
   (test-expand-term (Let [^ [^ x 1]] (+ x 1)))
   

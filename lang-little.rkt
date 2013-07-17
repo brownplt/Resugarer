@@ -94,7 +94,7 @@
 (define-macro And
   ((And)          0)
   ((And x)        x)
-  ((And x xs ...) (if0 x (And xs ...) 7)))
+  ((And x y ys ...) (if0 x (And y ys ...) 7)))
 
 (define-macro Letrec
   [(_ ((var init) ...) body)
@@ -134,7 +134,7 @@
   (make-redex-language "Mirror" Mirror red (λ (x y) x) (λ (x) (cons x 'nuthin)) (λ (x) #f)))
 
 (define-syntax-rule (test-eval t)
-  (macro-aware-eval MAMirror (make-pattern t) 'nuthin))
+  (macro-aware-eval MAMirror (make-term t) 'nuthin))
 
 (define t (term (+ (origins ()) 1 2)))
 (test-eval (+ 1 2))
