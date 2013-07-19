@@ -9,13 +9,18 @@
   
   ; This code is OK to run in sequence; not so good concurrently.
   
+  ; call/cc must be spelt call/cc, not call-with-current-continuation,
+  ; and is treated as a special form (e.g., ((λ (x) call/cc) f) won't work).
+  
   (define-struct Var (name value) #:transparent)
   (define-struct Func (func term)
     #:property prop:procedure
     (λ (self . args) (apply (Func-func self) args)))
   (define-struct term-list* (terms))
+  (define-struct Cont (stk))
   
   (define-setting SHOW_PROC_NAMES     set-show-proc-names!     #t)
+  (define-setting SHOW_CONTINUATIONS  set-show-continuations!  #t)
   (define-setting DEBUG_VARS          set-debug-vars!          #f)
   (define-setting HIDE_EXTERNAL_CALLS set-hide-external-calls! #t)
   (define-setting DEBUG_STEPS         set-debug-steps!         #f)
@@ -81,6 +86,11 @@
              (if DEBUG_VARS
                  (term-list (list) (list name ':= term))
                  (if (could-not-unexpand? u) name u)))]
+          [(Cont? x)
+           (let [[stk (value->term (reconstruct-stack '__ (Cont-stk x)))]]
+             (if SHOW_CONTINUATIONS
+                 (term-list (list) (list '*cont* stk))
+                 '*cont*))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (or (object-name x) 'cont)]
           [else
@@ -198,7 +208,7 @@
        (with-syntax [[v* v_]
                      [x* (adorn x_)]]
          (annot/term os_ #'(list 'set! 'v* x*)))]
-      
+
       ; (f xs ...)
       [(term-list os_ (list f_ xs_ ...))
        (with-syntax [[f* (adorn f_)]
@@ -272,21 +282,6 @@
            #'(let [[xv* x*]]
                ($emit term*)
                (set! v* xv*))))]
-      
-      ; (call/cc f)
-      ; TODO: Don't expose gensym
-      [(term-list os_ (list 'call/cc f_))
-       (with-syntax [[(fv* kv*) (generate-temporaries #'(f cont_))]
-                     [ft* (adorn f_)]
-                     [f* (annot/frame (annot/eval f_) os_ #'(list 'call/cc __))]]
-         (with-syntax [[body* (annot/call #'fv* #'(kv*))]
-                       [term* (annot/term os_ #'(list 'call/cc fv*))]]
-           #'(let [[$old-stk $stk]
-                   [fv* f*]]
-               ($emit term*)
-               (call/cc (λ (kv*) (let [[kv* (λ args ($reset! $old-stk)
-                                              (apply kv* args))]]
-                                   body*))))))]
 
       ; (f xs ...)
       [(term-list os_ (list f_ xs_ ...))
@@ -314,6 +309,13 @@
                       x*)
              #'x*))]
       ))
+  
+  (define (call/cc f)
+    (let [[old-stk $stk]]
+      (call-with-current-continuation
+       (λ (k) (let [[cont (Func (λ args ($reset! old-stk) (apply k args))
+                                (Cont old-stk))]]
+                (f cont))))))
   
   (define-syntax-rule (test-term t)
     (syntax->datum (annotate-term (make-term t))))
