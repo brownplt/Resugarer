@@ -324,6 +324,4 @@
   
   (define (string-rest x)
     (substring x 1))
-  
-  (test-eval (λ (x) x))
 )

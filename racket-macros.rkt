@@ -112,11 +112,23 @@
     (time (letrec ((fib (λ (n) (if (or (eq? n 0) (eq? n 1))
                                    1
                                    (+ (fib (- n 1)) (fib (- n 2)))))))
-            (begin (fib 20) (void))))
+            (begin (fib 23) (void))))
     (time (test-silent-eval (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
-                                                  1
-                                                  (+ (fib (- n 1)) (fib (- n 2)))))]]
-                             (begin (fib 20) (void))))))
+                                                         1
+                                                         (+ (fib (- n 1)) (fib (- n 2)))))]]
+                                    (begin (fib 23) (void))))))
+  
+  (define (time-sum)
+    (display "Summation:\n")
+    (time (letrec ((sum (λ (n acc) (if (eq? n 0)
+                                       acc
+                                       (sum (- n 1) (+ n acc))))))
+            (sum 60000 0)))
+    (time (test-silent-eval (Letrec [^ [^ sum (λ (n acc) (if (eq? n 0)
+                                                             acc
+                                                             (sum (- n 1) (+ n acc))))]]
+                                    (sum 60000 0))))
+    (void))
   
   (define (time-factorial)
     (display "Factorial:\n")
@@ -125,9 +137,9 @@
                                          (* n (factorial (- n 1)))))))
             (begin (factorial 10000) (void))))
     (time (test-silent-eval (Letrec [^ [^ factorial (λ (n) (if (eq? n 0)
-                                                       1
-                                                       (* n (factorial (- n 1)))))]]
-                             (begin (factorial 10000) (void))))))
+                                                               1
+                                                               (* n (factorial (- n 1)))))]]
+                                    (begin (factorial 10000) (void))))))
   
   (define (time-fast-factorial)
     (display "Accumulating Factorial:\n")
@@ -231,6 +243,7 @@
   
   (time-fast-factorial)
   (time-fib)
+  (time-sum)
   (time-factorial)
 
   ; Racket profiler totally unhelpful within eval

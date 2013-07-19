@@ -50,7 +50,7 @@
                       (if (set-empty? overlap)
                           (union-vars (cons (set-union (car vs) (cadr vs))
                                             (cddr vs)))
-                          (duplicate-var-failure m (set-first overlap) c)))]))
+                          (duplicate-var-failure m (first (set->list overlap)) c)))]))
       
       (define (check-wf-lhs p)
         (match p
