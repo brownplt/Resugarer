@@ -231,6 +231,12 @@
                  [^ end    $: "accept"])
               "1101."))
   
+  (test-eval (string-append "before "
+               (call/cc (λ (k) (string-append "outside "
+                                  (k (string-append "in" "side")))))))
+  
+  (test-eval (+ 1 (+ 2 (+ 3 (call/cc (λ (k) (+ 4 (k (+ 5 6)) (+ 7 8)))) 9)) 10))
+  
   (show-term (expand-term (make-term (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
                                                   1
                                                   (+ (fib (- n 1)) (fib (- n 2)))))]]
@@ -245,7 +251,7 @@
   (time-fib)
   (time-sum)
   (time-factorial)
-
+  
   ; Racket profiler totally unhelpful within eval
   #;(profile-silent-eval
     (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))

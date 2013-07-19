@@ -36,8 +36,8 @@
   (define ($pop!)
     (set! $stk (cdr $stk)))
   
-  (define ($reset!)
-    (set! $stk (list)))
+  (define ($reset! [stk (list)])
+    (set! $stk stk))
   
   
   ;;; Emitting Terms ;;;
@@ -82,9 +82,9 @@
                  (term-list (list) (list name ':= term))
                  (if (could-not-unexpand? u) name u)))]
           [(and SHOW_PROC_NAMES (procedure? x))
-           (object-name x)]
+           (or (object-name x) 'cont)]
           [else
-           x]))    
+           x]))
   
   
   ;;; Annotating Racket Programs to Emit ;;;
@@ -273,6 +273,21 @@
                ($emit term*)
                (set! v* xv*))))]
       
+      ; (call/cc f)
+      ; TODO: Don't expose gensym
+      [(term-list os_ (list 'call/cc f_))
+       (with-syntax [[(fv* kv*) (generate-temporaries #'(f cont_))]
+                     [ft* (adorn f_)]
+                     [f* (annot/frame (annot/eval f_) os_ #'(list 'call/cc __))]]
+         (with-syntax [[body* (annot/call #'fv* #'(kv*))]
+                       [term* (annot/term os_ #'(list 'call/cc fv*))]]
+           #'(let [[$old-stk $stk]
+                   [fv* f*]]
+               ($emit term*)
+               (call/cc (λ (kv*) (let [[kv* (λ args ($reset! $old-stk)
+                                              (apply kv* args))]]
+                                   body*))))))]
+
       ; (f xs ...)
       [(term-list os_ (list f_ xs_ ...))
        (let [[xvs_ (map (λ (_) (with-syntax [[(v) (generate-temporaries #'(x))]] #'v)) xs_)]]
