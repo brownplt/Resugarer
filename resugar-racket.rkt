@@ -90,7 +90,7 @@
            (let [[stk (value->term (reconstruct-stack '__ (Cont-stk x)))]]
              (if SHOW_CONTINUATIONS
                  (term-list (list) (list '*cont* stk))
-                 '*cont*))]
+                 (term-id (list (o-external)) '*cont*)))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (or (object-name x) 'cont)]
           [else

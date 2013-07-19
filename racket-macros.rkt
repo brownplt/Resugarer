@@ -239,7 +239,7 @@
   
   (test-eval (+ 1 (+ 2 (+ 3 (call/cc (λ (k) (+ 4 (k (+ 5 6)) (+ 7 8)))) 9)) 10))
   (test-eval (+ 1 (call/cc (lambda (k) (+ 2 (call/cc (lambda (k2) (+ 3 (k 1729)))))))))
-  (test-eval (Let [^ [^ k (call/cc (lambda (k) k))]] (+ 2 (k (λ (x) 3)))))
+  (test-eval (Let [^ [^ k (call/cc (lambda (c) c))]] (+ 2 (k (λ (x) 3)))))
   ;(test-eval ((call/cc call/cc) (call/cc call/cc))) -- loops
   #|
   (show-term (expand-term (make-term (Letrec [^ [^ fib (λ (n) (if (Or (eq? n 0) (eq? n 1))
