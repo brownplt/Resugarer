@@ -2,6 +2,7 @@ module Show () where
 
 import Pattern
 
+
 str = showString
 
 showsList :: [ShowS] -> ShowS
@@ -15,13 +16,14 @@ showsParens xs = str "(" . showsList xs . str ")"
 instance Show Pattern where
   showsPrec _ (PVar v) = shows v
   showsPrec _ (PCst c) = shows c
-  showsPrec _ (PLst l ps) = showsParens (str l : map shows ps)
-  showsPrec _ (PMac m ps) = showsParens (str m : map shows ps)
-  showsPrec _ (PLstRep l ps r) =
-    showsParens ([str l] ++ map shows ps ++ [shows r, str repStr])
-  showsPrec _ (PMacRep m ps r) =
-    showsParens ([str m] ++ map shows ps ++ [shows r, str repStr])
+  showsPrec _ (PNod l ps) = showsParens (shows l : map shows ps)
+  showsPrec _ (PRep l ps r) =
+    showsParens ([shows l] ++ map shows ps ++ [shows r, str repStr])
   showsPrec _ (PTag o p) = showsParens [str tagStr, shows o, shows p]
+
+instance Show NodeType where
+  showsPrec _ (NLst l) = str l
+  showsPrec _ (NMac m) = str m
 
 instance Show Term where
   showsPrec _ = shows . termToPattern
