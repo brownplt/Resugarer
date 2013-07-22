@@ -9,8 +9,7 @@
   
   ; This code is OK to run in sequence; not so good concurrently.
   
-  ; call/cc must be spelt call/cc, not call-with-current-continuation,
-  ; and is treated as a special form (e.g., ((λ (x) call/cc) f) won't work).
+  ; call/cc must be spelt call/cc, and not call-with-current-continuation
   
   (define-struct Var (name value) #:transparent)
   (define-struct Func (func term)
@@ -18,6 +17,8 @@
     (λ (self . args) (apply (Func-func self) args)))
   (define-struct term-list* (terms))
   (define-struct Cont (stk))
+  (define undefined (letrec [[x x]] x))
+  (define (undefined? x) (eq? x undefined))
   
   (define-setting SHOW_PROC_NAMES     set-show-proc-names!     #t)
   (define-setting SHOW_CONTINUATIONS  set-show-continuations!  #t)
@@ -25,6 +26,7 @@
   (define-setting HIDE_EXTERNAL_CALLS set-hide-external-calls! #t)
   (define-setting DEBUG_STEPS         set-debug-steps!         #f)
   (define-setting DEBUG_TAGS          set-debug-tags!          #f)
+  (define-setting HIDE_UNDEFINED      set-hide-undefined!      #t)
   
   
   ;;; Keeping track of the stack ;;;
@@ -85,12 +87,12 @@
                   [u    (unexpand-term term)]]
              (if DEBUG_VARS
                  (term-list (list) (list name ':= term))
-                 (if (could-not-unexpand? u) name u)))]
+                 (if (or (and HIDE_UNDEFINED (undefined? u))
+                         (could-not-unexpand? u))
+                     name u)))]
           [(Cont? x)
            (let [[stk (value->term (reconstruct-stack '__ (Cont-stk x)))]]
-             (if SHOW_CONTINUATIONS
-                 (term-list (list) (list '*cont* stk))
-                 (term-id (list (o-external)) '*cont*)))]
+             (term-list (list) (list '*cont* stk)))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (or (object-name x) 'cont)]
           [else
@@ -100,11 +102,11 @@
   ;;; Annotating Racket Programs to Emit ;;;
   
   ; Top level
-  (define (annotate-term term [emit emit])
+  (define (annotate-terms terms [emit emit])
     (set! $emit emit)
-    (with-syntax [[t* (annot/eval term)]]
+    (with-syntax [[(ts* ...) (map annot/eval terms)]]
       #'(begin ($reset!)
-               (let [[$result t*]]
+               (let [[$result (let [] ts* ...)]]
                  ($emit $result)
                  $result))))
   
@@ -203,6 +205,20 @@
              #'(let [[vs* 'vs*] ...]
                  lambda*))))]
       
+      ; (define v x)
+      [(term-list os_ (list 'define (? symbol? v_) x_))
+       (with-syntax [[v* v_]
+                     [x* (adorn x_)]]
+         (annot/term os_ #'(list 'define 'v* x*)))]
+      
+      ; (define (f v ...) x)
+      [(term-list os_ (list 'define (term-list os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
+       (with-syntax [[f* f_]
+                     [(vs* ...) vs_]
+                     [x* (adorn x_)]]
+         (with-syntax [[decl* (annot/term os2_ #'(list 'f* 'vs* ...))]]
+           (annot/term os_ #'(list 'define decl* x*))))]
+      
       ; (set! v x)
       [(term-list os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[v* v_]
@@ -223,6 +239,11 @@
                  #''^
                  #'(Var 'c* c*))
              #'c*))]))
+  
+  (define (adorn/close x_ vs_)
+    (with-syntax [[x* (adorn x_)]
+                  [(vs* ...) vs_]]
+      #'(let [[vs* 'vs*] ...] x*)))
   
   
   
@@ -273,6 +294,31 @@
                        [term* (adorn term_)]]
            #'(Func (λ (vs* ...) body*) term*)))]
       
+      ; (define (f v ...) x)
+      [(term-list os_ (list 'define (term-list os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
+       (with-syntax [[f* f_]
+                     [(vs* ...) vs_]
+                     [xt* (adorn/close x_ vs_)]
+                     [x* (annot/eval (term-list os_ (list 'λ (term-list os2_ vs_) x_)))]
+                     [(xv*) (generate-temporaries #'(x))]]
+         (with-syntax [[decl* (annot/term os2_ #'(list 'f* 'vs* ...))]]
+           (with-syntax [[term* (annot/term os_ #'(list 'define decl* xt*))]]
+             #'(define f*
+                 (let [[xv* x*]]
+                   ($emit term*)
+                   xv*)))))]
+
+      ; (define v x)
+      [(term-list os_ (list 'define (? symbol? v_) x_))
+       (with-syntax [[(xv*) (generate-temporaries #'(x))]
+                     [v* v_]]
+         (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'define 'v* __))]
+                       [term* (annot/term os_ #'(list 'define 'v* xv*))]]
+           #'(define v*
+               (let [[xv* x*]]
+                 ($emit term*)
+                 xv*))))]
+      
       ; (set! v x)
       [(term-list os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[v* v_]
@@ -314,20 +360,28 @@
     (let [[old-stk $stk]]
       (call-with-current-continuation
        (λ (k) (let [[cont (Func (λ args ($reset! old-stk) (apply k args))
-                                (Cont old-stk))]]
+                                (if SHOW_CONTINUATIONS
+                                    (Cont old-stk)
+                                    (gensym 'cont_)))]]
                 (f cont))))))
   
-  (define-syntax-rule (test-term t)
-    (syntax->datum (annotate-term (make-term t))))
   
-  (define-syntax-rule (test-expand-term t)
-    (syntax->datum (annotate-term (expand-term (make-term t)))))
+  ;;; Testing ;;;
   
-  (define-syntax-rule (test-eval t)
-    (eval (annotate-term (expand-term (make-term t))) (current-namespace)))
+  (define-syntax-rule (test-term ts ...)
+    (syntax->datum (annotate-terms (list (make-term ts) ...))))
   
-  (define-syntax-rule (test-silent-eval t)
-    (eval (annotate-term (expand-term (make-term t)) (λ x (void))) (current-namespace)))
+  (define-syntax-rule (test-expand-term ts ...)
+    (syntax->datum (annotate-terms (list (expand-term (make-term ts)) ...))))
+  
+  (define-syntax-rule (test-eval ts ...)
+    (eval (annotate-terms (list (expand-term (make-term ts)) ...))
+          (current-namespace)))
+  
+  (define-syntax-rule (test-silent-eval ts ...)
+    (eval (annotate-terms (list (expand-term (make-term ts)) ...)
+                          (λ x (void)))
+          (current-namespace)))
   
   (define-syntax-rule (profile-silent-eval t)
     (with-syntax [[prog* (annotate-term (expand-term (make-term t)) (λ x (void)))]]
