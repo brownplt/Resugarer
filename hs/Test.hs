@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import Pattern
@@ -5,6 +6,12 @@ import Show
 import Test.QuickCheck
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.Maybe (isJust)
+
+instance Arbitrary Macro where
+  arbitrary = liftM (Macro "M") (vectorOf 3 arbitrary)
+
+instance Arbitrary MacroCase where
+  arbitrary = liftM2 MacroCase arbitrary arbitrary
 
 instance Arbitrary Var where
   arbitrary = oneof $ map (return . Var) ["x", "y", "z"]
@@ -54,18 +61,35 @@ instance Arbitrary Origin where
 
 deepCheck x = quickCheckWith stdArgs {maxSuccess = 10000} x
 
-prop_subs p q =
-  let e = match p q in
-  case e of
-    Nothing -> True
-    Just e -> subs e q == p
+prop_subs t p =
+  if isLeft (wellFormedPattern "m" p)
+  then True
+  else case match t p of
+    Left _ -> True
+    Right e -> subs e p == t
 
-prop_subs' p q = isJust (match p q) ==> prop_subs p q
+prop_get_put m t =
+  if isLeft (wellFormedMacro m)
+  then True
+  else case expandMacro m t of
+    Left _ -> True
+    Right t' -> case unexpandMacro m t' t of
+      Left _ -> False
+      Right t2 -> t2 == t
+  where types = t :: Term
 
-prop_RevRev xs = xs == xs
-  where types = xs::[Term]
+prop_put_get :: Macro -> Int -> Term -> (Int, Term) -> Property
+prop_put_get m i t t' = i < 3 && i >= 0 ==>
+  if isLeft (wellFormedMacro m)
+  then True
+  else case unexpandMacro m t' t of
+    Left _ -> True
+    Right t -> case expandMacro m t of
+      Left _ -> False
+      Right t2' -> t2' == t'
 
 main = do
---  quickCheck prop_subs
   deepCheck prop_subs
+  deepCheck prop_get_put
+  deepCheck prop_put_get
 --  sample (arbitrary :: Gen Pattern)
