@@ -8,36 +8,31 @@ import Control.Monad (liftM, liftM2, zipWithM, when)
 
 
 newtype Var = Var String deriving (Eq, Ord)
-type Label = String
-type MacroName = String
+newtype Label = Label String deriving (Eq, Ord)
 
-type MacroTable = Map MacroName Macro
+type MacroTable = Map Label Macro
 
-data Macro = Macro MacroName [MacroCase]
+data Macro = Macro Label [Rule]
 
-data MacroCase = MacroCase Pattern Pattern
+data Rule = Rule Pattern Pattern deriving (Eq)
 
 data Pattern =
     PVar Var
-  | PCst Const
-  | PNod NodeType [Pattern]
-  | PRep NodeType [Pattern] Pattern
+  | PConst Const
+  | PNode Label [Pattern]
+  | PList Pattern
   | PTag Origin Pattern
     deriving (Eq)
 
 data Term =
-    TCst Const
-  | TNod NodeType [Term]
+    TConst Const
+  | TNode Label [Term]
+  | TList [Term]
   | TTag Origin Term
     deriving (Eq)
 
-data NodeType =
-    NLst Label
-  | NMac MacroName
-    deriving (Eq, Ord)
-
 data Origin =
-    MacHead MacroName Int Term
+    MacHead Label Int Term
   | MacBody
 
 data Const =
@@ -61,20 +56,23 @@ type Env = Map Var Binding
 data UnifyError = UnifyError Pattern Pattern
 
 data ResugarError = MatchError Term Pattern
-                  | NoMatchingCase MacroName Term
-                  | NoSuchMacro MacroName
+                  | NoMatchingCase Label Term
+                  | NoSuchMacro Label
                   | TermIsOpaque
 
-data WFError = CasesOverlap MacroName Pattern Pattern Pattern
+data WFError = CasesOverlap Label Pattern Pattern Pattern
              | UnboundVar Var
-             | EmptyEllipsis MacroName
+             | EmptyEllipsis Label
+
+instance Show Label where
+  show (Label l) = l
 
 
 internalError msg = error ("Internal error: " ++ msg)
 
 termToPattern :: Term -> Pattern
-termToPattern (TCst c) = PCst c
-termToPattern (TNod l ts) = PNod l (map termToPattern ts)
+termToPattern (TConst c) = PConst c
+termToPattern (TNode l ts) = PNode l (map termToPattern ts)
 termToPattern (TTag o t) = PTag o (termToPattern t)
 
 varName :: Var -> String
@@ -82,36 +80,31 @@ varName (Var name) = name
 
 fvars :: Pattern -> Set Var
 fvars (PVar v) = Set.singleton v
-fvars (PCst _) = Set.empty
-fvars (PNod _ ps) = Set.unions (map fvars ps)
-fvars (PRep _ ps r) = Set.unions (map fvars ps) `Set.union` fvars r
+fvars (PConst _) = Set.empty
+fvars (PNode _ ps) = Set.unions (map fvars ps)
+fvars (PList p) = fvars p
 fvars (PTag _ p) = fvars p
-
-repStr = "..."
-macBodyStr = "Body"
-macHeadStr = "Head"
-tagStr = "Tag"
 
 
 {- Matching -}
 
 match :: Term -> Pattern -> Either ResugarError Env
-match (TCst c)    (PCst c')      | c == c' = return mtEnv
-match t           (PVar v)                 = return (singletonEnv v t)
-match (TTag o t)  (PTag o' p)    | o == o' = match t p
-match (TNod l ts) (PNod l' ps)   | l == l' = matches l ts ps
-match (TNod l ts) (PRep l' ps r) | l == l' = matchRep l ts ps r
-match t           p                        = Left (MatchError t p)
+match (TConst c)   (PConst c')    | c == c' = return mtEnv
+match t            (PVar v)                 = return (singletonEnv v t)
+match (TTag o t)   (PTag o' p)    | o == o' = match t p
+match (TNode l ts) (PNode l' ps)  | l == l' = matchNode l ts ps
+match (TList ts)   (PList p)                = matchList ts p
+match t            p                        = Left (MatchError t p)
 
-matches _ [] [] = return mtEnv
-matches l (t:ts) (p:ps) = liftM2 unifyEnv (match t p) (matches l ts ps)
-matches l ts ps = Left (MatchError (TNod l ts) (PNod l ps))
+matchNode :: Label -> [Term] -> [Pattern] -> Either ResugarError Env
+matchNode _ [] [] = return mtEnv
+matchNode l (t:ts) (p:ps) = liftM2 unifyEnv (match t p) (matchNode l ts ps)
+matchNode l ts ps = Left (MatchError (TNode l ts) (PNode l ps))
 
-matchRep _ []     []     r = return $ Map.fromList $
-  map (\v -> (v, BList [])) (Set.toList (fvars r))
-matchRep l (t:ts) (p:ps) r = liftM2 unifyEnv (match t p) (matchRep l ts ps r)
-matchRep _ (t:ts) []     r = liftM mergeEnvs (zipWithM match (t:ts) (repeat r))
-matchRep l []     ps     r = Left (MatchError (TNod l []) (PRep l ps r))
+matchList :: [Term] -> Pattern -> Either ResugarError Env
+matchList []     p = return $ Map.fromList $
+  map (\v -> (v, BList [])) (Set.toList (fvars p))
+matchList (t:ts) p = liftM mergeEnvs (zipWithM match (t:ts) (repeat p))
 
 mergeEnvs :: [Env] -> Env
 mergeEnvs [] = internalError "Unexpected empty env list"
@@ -128,12 +121,12 @@ subs :: Env -> Pattern -> Term
 subs e (PVar v@(Var name)) = case (lookupVar v e) of
   Nothing -> internalError ("Unbound variable: " ++ name)
   Just t -> t
-subs e (PCst c)      = TCst c
-subs e (PNod l ps)   = TNod l (map (subs e) ps)
-subs e (PRep l ps r) = TNod l (map (subs e) ps ++ subsRep e r)
+subs e (PConst c)    = TConst c
+subs e (PNode l ps)  = TNode l (map (subs e) ps)
+subs e (PList p)     = TList (subsList e p)
 subs e (PTag o p)    = TTag o (subs e p)
 
-subsRep e r = map (\e -> subs e r) (splitEnv e (Set.toList (fvars r)))
+subsList e p = map (\e -> subs e p) (splitEnv e (Set.toList (fvars p)))
 
 mtEnv = Map.empty
 singletonEnv v t = Map.singleton v (BTerm t)
@@ -167,27 +160,23 @@ splitEnv e vs =
 {- Unification -}
 
 unify :: Pattern -> Pattern -> Either UnifyError Pattern
-unify (PCst c)    (PCst c')          | c == c' = return (PCst c)
-unify (PVar v)    p                            = return p
-unify p           (PVar v)                     = return p
-unify (PTag o p)  (PTag o' p')       | o == o' = liftM (PTag o) (unify p p')
-unify (PNod l ps) (PNod l' ps')      | l == l' && length ps == length ps'
-  = liftM (PNod l) (zipWithM unify ps ps')
-unify (PNod l ps) (PRep l' ps' r)    | l == l' && length ps >= length ps'
-  = liftM (PNod l) (zipWithM unify ps (ps' ++ repeat r))
-unify (PRep l' ps' r) (PNod l ps)    | l == l' && length ps >= length ps'
-  = liftM (PNod l) (zipWithM unify ps (ps' ++ repeat r))
-unify (PRep l ps r) (PRep l' ps' r') | l == l' && isLeft (unify r r')
-  = if length ps >= length ps'
-    then liftM (PNod l) (zipWithM unify ps (ps' ++ repeat r'))
-    else liftM (PNod l) (zipWithM unify ps' (ps ++ repeat r))
-unify (PRep l ps r) (PRep l' ps' r') | l == l' && isRight (unify r r')
-  = if length ps >= length ps'
-    then liftM2 (PRep l) (zipWithM unify ps (ps' ++ repeat r'))
-                         (unify r r')
-    else liftM2 (PRep l) (zipWithM unify ps' (ps ++ repeat r))
-                         (unify r r')
+unify (PConst c)   (PConst c')       | c == c' = return (PConst c)
+unify (PVar v)     p                           = return p
+unify p            (PVar v)                    = return p
+unify (PTag o p)   (PTag o' p')      | o == o' = liftM (PTag o) (unify p p')
+unify (PList p)    (PList p')                  = liftM PList (unify p p')
+unify (PNode l ps) (PNode l' ps')    | l == l' && length ps == length ps'
+  = liftM (PNode l) (zipWithM unify ps ps')
 unify p q = Left (UnifyError p q)
+
+subsumed :: Pattern -> Pattern -> Bool
+subsumed _            (PVar _)                 = True
+subsumed (PConst c)   (PConst c')    | c == c' = True
+subsumed (PTag o p)   (PTag o' p')   | o == o' = subsumed p p'
+subsumed (PList p)    (PList p')               = subsumed p p'
+subsumed (PNode l ps) (PNode l' ps') | l == l' && length ps == length ps'
+  = and (zipWith subsumed ps ps')
+subsumed _            _                        = False
 
 
 {- Macros -}
@@ -198,17 +187,17 @@ expandMacro (Macro name cs) t = expandCases 0 cs
     expandCases _ [] = Left (NoMatchingCase name t)
     expandCases i (c:cs) = eitherOr (expandCase i c) (expandCases (i + 1) cs)
     
-    expandCase i (MacroCase p p') = do
+    expandCase i (Rule p p') = do
       e <- match t p
       return (i, subs e p')
 
 unexpandMacro :: Macro -> (Int, Term) -> Term -> Either ResugarError Term
-unexpandMacro (Macro m cs) (i, t') t =
+unexpandMacro (Macro l cs) (i, t') t =
   if i >= length cs
-  then internalError ("Macro index out of range in " ++ m)
+  then internalError ("Macro index out of range in " ++ show l)
   else unexpandCase (cs !! i)
     where
-      unexpandCase (MacroCase p p') = do
+      unexpandCase (Rule p p') = do
         e <- match t p
         e' <- match t' p'
         return (subs (composeEnvs e e') p)
@@ -217,18 +206,18 @@ unexpandMacro (Macro m cs) (i, t') t =
 {- Well-formedness Checking -}
 
 wellFormedMacro :: Macro -> Either WFError ()
-wellFormedMacro (Macro m cs) = do
+wellFormedMacro (Macro l cs) = do
   mapM_ disjointCases (allDistinctPairs cs)
-  mapM_ (wellFormedCase m) cs
+  mapM_ (wellFormedCase l) cs
   where
-    disjointCases ((MacroCase p _), (MacroCase q _)) = case unify p q of
+    disjointCases ((Rule p _), (Rule q _)) = case unify p q of
       Left _ -> return ()
-      Right r -> Left (CasesOverlap m p q r)
+      Right r -> Left (CasesOverlap l p q r)
 
-wellFormedCase :: MacroName -> MacroCase -> Either WFError ()
-wellFormedCase m (MacroCase p q) = do
-  wellFormedPattern m p
-  wellFormedPattern m q
+wellFormedCase :: Label -> Rule -> Either WFError ()
+wellFormedCase l (Rule p q) = do
+  wellFormedPattern l p
+  wellFormedPattern l q
   varSubset p q
   where
     varSubset p q =
@@ -236,38 +225,39 @@ wellFormedCase m (MacroCase p q) = do
         [] -> return ()
         (v:_) -> Left (UnboundVar v)
 
-wellFormedPattern :: MacroName -> Pattern -> Either WFError ()
+wellFormedPattern :: Label -> Pattern -> Either WFError ()
 wellFormedPattern _ (PVar _) = return ()
-wellFormedPattern _ (PCst _) = return ()
-wellFormedPattern m (PTag _ p) = wellFormedPattern m p
-wellFormedPattern m (PNod _ ps) = mapM_ (wellFormedPattern m) ps
-wellFormedPattern m (PRep _ ps r) = do
-  mapM_ (wellFormedPattern m) ps
-  wellFormedPattern m r
-  when (Set.null (fvars r)) (Left (EmptyEllipsis m))
+wellFormedPattern _ (PConst _) = return ()
+wellFormedPattern l (PTag _ p) = wellFormedPattern l p
+wellFormedPattern l (PNode _ ps) = mapM_ (wellFormedPattern l) ps
+wellFormedPattern l (PList p) = do
+  wellFormedPattern l p
+  when (Set.null (fvars p)) (Left (EmptyEllipsis l))
 
 
 {- Expansion and Unexpansion -}
 
-lookupMacro :: MacroName -> MacroTable -> Either ResugarError Macro
-lookupMacro m ms = case Map.lookup m ms of
-  Nothing -> Left (NoSuchMacro m)
-  Just m -> return m
+lookupMacro :: Label -> MacroTable -> Maybe Macro
+lookupMacro l ms = Map.lookup l ms
 
 expand :: MacroTable -> Term -> Either ResugarError Term
-expand _ (TCst c) = return (TCst c)
-expand ms t@(TNod (NMac m) ts) = do
-  (i, t') <- lookupMacro m ms >>= flip expandMacro t
-  expand ms (TTag (MacHead m i (TNod (NMac m) ts)) t')
-expand ms (TNod (NLst l) ts) = liftM (TNod (NLst l)) (mapM (expand ms) ts)
+expand _ (TConst c) = return (TConst c)
 expand ms (TTag o t) = liftM (TTag o) ((expand ms) t)
+expand ms t@(TNode l ts) =
+  case lookupMacro l ms of
+    Nothing -> liftM (TNode l) (mapM (expand ms) ts)
+    Just m -> do
+      (i, t') <- expandMacro m t
+      expand ms (TTag (MacHead l i (TNode l ts)) t')
 
 unexpand :: MacroTable -> Term -> Either ResugarError Term
-unexpand _ (TCst c) = return (TCst c)
-unexpand ms (TNod l ts) = liftM (TNod l) (mapM (unexpand ms) ts)
+unexpand _ (TConst c) = return (TConst c)
+unexpand ms (TNode l ts) = liftM (TNode l) (mapM (unexpand ms) ts)
 unexpand ms (TTag MacBody _) = Left TermIsOpaque
-unexpand ms (TTag (MacHead m i t) t') =
-  lookupMacro m ms >>= (\m -> unexpandMacro m (i, t') t) >>= unexpand ms
+unexpand ms (TTag (MacHead l i t) t') =
+  case lookupMacro l ms of
+    Nothing -> Left (NoSuchMacro l)
+    Just l -> unexpandMacro l (i, t') t >>= unexpand ms
 
 
 {- Errors as Eithers -}
@@ -293,59 +283,3 @@ allDistinctPairs :: [a] -> [(a, a)]
 allDistinctPairs [] = []
 allDistinctPairs [_] = []
 allDistinctPairs (x:xs) = map (\y -> (x, y)) xs ++ allDistinctPairs xs
-
-
-{- Printing -}
-
-
-str = showString
-
-showsList :: [ShowS] -> ShowS
-showsList [] = id
-showsList [x] = x
-showsList (x:y:ys) = x . str " " . showsList (y:ys)
-
-showsParens :: [ShowS] -> ShowS
-showsParens xs = str "(" . showsList xs . str ")"
-
-showsBrackets :: [ShowS] -> ShowS
-showsBrackets xs = str "[" . showsList xs . str "]"
-
-instance Show Pattern where
-  showsPrec _ (PVar v) = shows v
-  showsPrec _ (PCst c) = shows c
-  showsPrec _ (PNod l ps) = showsParens (shows l : map shows ps)
-  showsPrec _ (PRep l ps r) =
-    showsParens ([shows l] ++ map shows ps ++ [shows r, str repStr])
-  showsPrec _ (PTag o p) = showsParens [str tagStr, shows o, shows p]
-
-instance Show NodeType where
-  showsPrec _ (NLst l) = str l
-  showsPrec _ (NMac m) = str m
-
-instance Show Term where
-  showsPrec _ = shows . termToPattern
-
-instance Show Const where
-  showsPrec _ (CInt x) = shows x
-  showsPrec _ (CDbl x) = shows x
-  showsPrec _ (CStr x) = shows x
-
-instance Show Var where
-  showsPrec _ (Var v) = str "'" . str v
-
-instance Show Origin where
-  showsPrec _ (MacHead m i t) =
-    showsList [str macHeadStr, str m, shows i, shows t]
-  showsPrec _ MacBody = str macBodyStr
-
-instance Show Binding where
-  showsPrec _ (BList bs) = showsBrackets (map shows bs)
-  showsPrec _ (BTerm t) = shows t
-
-instance Show Macro where
-  showsPrec _ (Macro m cs) = showsList ([str m, str ":"] ++ map shows cs)
-
-instance Show MacroCase where
-  showsPrec _ (MacroCase p q) =
-    showsParens [shows p, str "=>", shows q]

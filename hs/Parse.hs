@@ -1,10 +1,14 @@
 module Parse where
+-- TODO: Export only (parseGrammar, parseRules)
 
-import Text.ParserCombinators.Parsec
+import Prelude hiding (const)
+import Text.ParserCombinators.Parsec hiding (label)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Control.Monad (liftM, liftM2, liftM3)
 
 import Pattern
+import Grammar
+import Show
 
 
 lexer = P.makeTokenParser $ P.LanguageDef {
@@ -16,8 +20,8 @@ lexer = P.makeTokenParser $ P.LanguageDef {
   P.identLetter = letter,
   P.opStart = upper,
   P.opLetter = letter,
-  P.reservedNames = [],
-  P.reservedOpNames = ["Head", "Body"],
+  P.reservedNames = [grammarStr, rulesStr],
+  P.reservedOpNames = [macHeadStr, macBodyStr],
   P.caseSensitive = True
   }
 stringLiteral = P.stringLiteral lexer
@@ -30,56 +34,118 @@ upperId = P.operator lexer
 lowerId = P.identifier lexer
 reservedOp = P.reservedOp lexer
 
+commaSep = P.commaSep lexer
+parens = P.parens lexer
+brackets = P.brackets lexer
+braces = P.braces lexer
+
+parse = Text.ParserCombinators.Parsec.parse
+
+--parseGrammar = parse grammar
+--parseRules = parse rules
+
+grammar :: Parser Grammar
+grammar = do
+  symbol "grammar"
+  ps <- many production
+  return (Grammar ps)
+
+production :: Parser Production
+production = do
+  l <- label
+  symbol hasTypeStr
+  ss <- esort `sepBy` (symbol typeProdStr)
+  symbol typeArrowStr
+  s <- sort
+  symbol terminalStr
+  return (Production l ss s)
+
+sort :: Parser Sort
+sort = liftM Sort upperId
+
+esort :: Parser ESort
+esort = esortList <|> esortScalar
+  where
+    esortScalar = liftM ESort sort
+    esortList = liftM EList (brackets esort)
+
+rules :: Parser Rules
+rules = do
+  symbol "rules"
+  rs <- many rule
+  return (Rules rs)
+
+rule :: Parser Rule
+rule = do
+  p <- pattern
+  symbol rewriteStr
+  q <- pattern
+  symbol terminalStr
+  return (Rule p q)
+
+pattern :: Parser Pattern
+pattern = do
+  p <- untaggedPattern
+  ts <- optionMaybe tags
+  case ts of
+    Nothing -> return p
+    Just ts -> return (addTags ts p)
+  where
+    untaggedPattern :: Parser Pattern
+    untaggedPattern = pVar <|> pConst <|> pNode <|> pList
+      where
+        pVar = liftM PVar var
+        pConst = liftM PConst const
+        pList = liftM PList (brackets pattern)
+        pNode = liftM2 PNode label (parens (commaSep pattern))
+    addTags [] p = p
+    addTags (o:os) p = addTags os (PTag o p)
+
+term :: Parser Term
+term = do
+  t <- untaggedTerm
+  os <- optionMaybe tags
+  case os of
+    Nothing -> return t
+    Just os -> return (addTags os t)
+  where    
+    untaggedTerm = tConst <|> tNode
+      where
+        tConst = liftM TConst const
+        tNode = liftM2 TNode label (parens (commaSep term))
+    addTags [] t = t
+    addTags (o:os) t = addTags os (TTag o t)
+
+tags :: Parser [Origin]
+tags = braces (brackets (commaSep origin))
+
+const :: Parser Const
+const = try parseInt <|> parseDbl <|> parseStr
+  where
+    parseInt = liftM (CInt . fromIntegral) integer
+    parseDbl = liftM CDbl float
+    parseStr = liftM CStr stringLiteral
+
 var :: Parser Var
 var = do
   symbol "'"
   t <- lowerId
   return (Var t)
 
-cst :: Parser Const
-cst = try parseInt <|> parseDbl <|> parseStr
-  where
-    parseInt = liftM (CInt . fromIntegral) integer
-    parseDbl = liftM CDbl float
-    parseStr = liftM CStr stringLiteral
-
-parens :: Parser a -> Parser a
-parens p = do
-  string "("
-  x <- p
-  string ")"
-  return x
-
 origin :: Parser Origin
 origin = origBody <|> origHead
   where
     origBody = reservedOp macBodyStr >> return MacBody
     origHead = do
-      reservedOp macHeadStr
-      m <- upperId
+      symbol macHeadStr
+      symbol "("
+      m <- label
+      symbol ","
       i <- natural
+      symbol ","
       t <- term
+      symbol ")"
       return (MacHead m (fromIntegral i) t)
 
-term :: Parser Term
-term = liftM TCst cst <|> tLst <|> tMac <|> tTag
-  where
-    tLst = parens (liftM2 TLst lowerId (many term))
-    tMac = parens (liftM2 TMac upperId (many term))
-    tTag = parens (liftM2 TTag origin term)
-
-patt :: Parser Pattern
-patt = liftM PVar var <|> liftM PCst cst <|>
-       pLst <|> pMac <|> pLstRep <|> pMacRep <|> pTag
-  where
-    pLst = parens (liftM2 PLst lowerId (many patt))
-    pMac = parens (liftM2 PMac upperId (many patt))
-    pTag = parens (liftM2 PTag origin patt)
-    pLstRep = parens (liftM3 PLstRep lowerId (many patt) (rep patt))
-    pMacRep = parens (liftM3 PMacRep upperId (many patt) (rep patt))
-  
-rep :: Parser a -> Parser a
-rep p = do
-  x <- p
-  symbol repStr
-  return x
+label :: Parser Label
+label = liftM Label upperId
