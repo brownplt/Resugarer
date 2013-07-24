@@ -55,9 +55,13 @@ type Env = Map Var Binding
 
 data UnifyFailure = UnifyFailure Pattern Pattern
 
--- This means something really went wrong
+-- This means something really went wrong;
+-- should never occur on good-faith user input.
 data ResugarError = NoMatchingCase Label Term
                   | NoSuchMacro Label
+                  | NoSuchCase Label Int
+                  | UnboundSubsVar Var
+                  | DepthMismatch Var
 
 -- Except for `ResugarError`, this just means the term couldn't be resugared.
 data ResugarFailure = MatchFailure Term Pattern
@@ -72,12 +76,8 @@ instance Show Label where
   show (Label l) = l
 
 
+-- These should never occur, even on malformed or malicious user input.
 internalError msg = error ("Internal error: " ++ msg)
-
-termToPattern :: Term -> Pattern
-termToPattern (TConst c) = PConst c
-termToPattern (TNode l ts) = PNode l (map termToPattern ts)
-termToPattern (TTag o t) = PTag o (termToPattern t)
 
 varName :: Var -> String
 varName (Var name) = name
@@ -111,54 +111,53 @@ matchList []     p = return $ Map.fromList $
 matchList (t:ts) p = liftM mergeEnvs (zipWithM match (t:ts) (repeat p))
 
 mergeEnvs :: [Env] -> Env
-mergeEnvs [] = internalError "Unexpected empty env list"
+mergeEnvs [] = internalError "mergeEnvs: Unexpected empty env list"
 mergeEnvs es = foldl1 merge (map singletonWrap es)
   where
     singletonWrap = Map.map (\t -> BList [t])
     merge e1 e2 = Map.intersectionWith concatBindings e1 e2
     concatBindings (BList bs) (BList bs') = BList (bs ++ bs')
+    concatBindings _ _ = internalError "concatBindings: unexpected"
 
 
 {- Substitution -}
 
-subs :: Env -> Pattern -> Term
-subs e (PVar v@(Var name)) = case (lookupVar v e) of
-  Nothing -> internalError ("Unbound variable: " ++ name)
-  Just t -> t
-subs e (PConst c)    = TConst c
-subs e (PNode l ps)  = TNode l (map (subs e) ps)
-subs e (PList p)     = TList (subsList e p)
-subs e (PTag o p)    = TTag o (subs e p)
+subs :: Env -> Pattern -> Either ResugarFailure Term
+subs e (PVar v) = case Map.lookup v e of
+  Nothing -> Left (ResugarError (UnboundSubsVar v))
+  Just (BTerm t) -> return t
+  Just (BList _) -> Left (ResugarError (DepthMismatch v))
+subs e (PConst c)    = return (TConst c)
+subs e (PNode l ps)  = liftM (TNode l) (mapM (subs e) ps)
+subs e (PList p)     = liftM TList (subsList e p)
+subs e (PTag o p)    = liftM (TTag o) (subs e p)
 
-subsList e p = map (\e -> subs e p) (splitEnv e (Set.toList (fvars p)))
+subsList e p = do
+  es <- splitEnv e (Set.toList (fvars p))
+  mapM (\e -> subs e p) es
 
 mtEnv = Map.empty
 singletonEnv v t = Map.singleton v (BTerm t)
 unifyEnv = Map.union
 
-lookupVar :: Var -> Env -> Maybe Term
-lookupVar v@(Var name) e = case Map.lookup v e of
-  Nothing -> Nothing
-  Just (BList _) -> internalError ("Unexpected binding list")
-  Just (BTerm t) -> Just t
-
 composeEnvs :: Env -> Env -> Env
 composeEnvs e1 e2 = Map.union e2 e1
 
-splitEnv :: Env -> [Var] -> [Env]
-splitEnv e vs =
-  map (\i -> Map.mapWithKey (split i) e) [0 .. n-1]
+splitEnv :: Env -> [Var] -> Either ResugarFailure [Env]
+splitEnv e vs = do
+  n <- n
+  mapM (\i -> mapWithKeyM (split i) e) [0 .. n-1]
   where
     n = case Map.lookup (head vs) e of
-      Nothing -> internalError "SplitEnv: unbound var"
-      Just (BTerm _) -> internalError "SplitEnv: non-binding-list"
-      Just (BList bs) -> length bs
+      Nothing -> Left (ResugarError (UnboundSubsVar (head vs)))
+      Just (BTerm _) -> Left (ResugarError (DepthMismatch (head vs)))
+      Just (BList bs) -> return (length bs)
     split i v b =
       if elem v vs
       then case b of
-        BTerm _ -> internalError "splitEnv/split: non-binding-list"
-        BList bs -> bs !! i
-      else b
+        BTerm _ -> Left (ResugarError (DepthMismatch v))
+        BList bs -> return (bs !! i)
+      else return b
 
 
 {- Unification -}
@@ -193,18 +192,19 @@ expandMacro (Macro name cs) t = expandCases 0 cs
     
     expandCase i (Rule p p') = do
       e <- match t p
-      return (i, subs e p')
+      t <- subs e p'
+      return (i, t)
 
 unexpandMacro :: Macro -> (Int, Term) -> Term -> Either ResugarFailure Term
 unexpandMacro (Macro l cs) (i, t') t =
   if i >= length cs
-  then internalError ("Macro index out of range in " ++ show l)
+  then Left (ResugarError (NoSuchCase l i))
   else unexpandCase (cs !! i)
     where
       unexpandCase (Rule p p') = do
         e <- match t p
         e' <- match t' p'
-        return (subs (composeEnvs e e') p)
+        subs (composeEnvs e e') p
 
 
 {- Well-formedness Checking -}
@@ -247,6 +247,7 @@ lookupMacro l ms = Map.lookup l ms
 expand :: MacroTable -> Term -> Either ResugarFailure Term
 expand _ (TConst c) = return (TConst c)
 expand ms (TTag o t) = liftM (TTag o) ((expand ms) t)
+expand ms (TList ts) = liftM TList (mapM (expand ms) ts)
 expand ms t@(TNode l ts) =
   case lookupMacro l ms of
     Nothing -> liftM (TNode l) (mapM (expand ms) ts)
@@ -256,6 +257,7 @@ expand ms t@(TNode l ts) =
 
 unexpand :: MacroTable -> Term -> Either ResugarFailure Term
 unexpand _ (TConst c) = return (TConst c)
+unexpand ms (TList ts) = liftM TList (mapM (unexpand ms) ts)
 unexpand ms (TNode l ts) = liftM (TNode l) (mapM (unexpand ms) ts)
 unexpand ms (TTag MacBody _) = Left TermIsOpaque
 unexpand ms (TTag (MacHead l i t) t') =
@@ -287,3 +289,8 @@ allDistinctPairs :: [a] -> [(a, a)]
 allDistinctPairs [] = []
 allDistinctPairs [_] = []
 allDistinctPairs (x:xs) = map (\y -> (x, y)) xs ++ allDistinctPairs xs
+
+mapWithKeyM :: (Monad m, Ord k) => (k -> a -> m b) -> Map k a -> m (Map k b)
+mapWithKeyM f m = liftM Map.fromList (mapM f' (Map.toList m))
+  where
+    f' (k, x) = f k x >>= return . (\x -> (k, x))

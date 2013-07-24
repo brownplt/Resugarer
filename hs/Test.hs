@@ -122,7 +122,9 @@ prop_match t p =
   then True
   else case match t p of
     Left _ -> True
-    Right e -> subs e p == t
+    Right e -> case (subs e p) of
+      Left _ -> False
+      Right t' -> t == t'
 
 prop_get_put m t =
   if isLeft (wellFormedMacro m)

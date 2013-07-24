@@ -66,7 +66,14 @@ instance Show Pattern where
   showsPrec _ (PNode l ps) = shows l . parens (commaSep (map shows ps))
 
 instance Show Term where
-  showsPrec _ = shows . termToPattern
+  showsPrec _ (TConst c) = shows c
+  showsPrec _ (TList ts) = brackets (commaSep (map shows ts))
+  showsPrec _ (TNode l ts) = shows l . parens (commaSep (map shows ts))
+  showsPrec _ (TTag o t) = showTags [o] t
+    where
+      showTags os (TTag o t) = showTags (o:os) t
+      showTags os t =
+        shows t . braces (brackets (commaSep (map shows os)))
 
 instance Show Const where
   showsPrec _ (CInt x) = shows x
@@ -131,6 +138,13 @@ instance Show ResugarError where
   showsPrec _ (NoSuchMacro l) =
     str "The label " . shows l . str (" appears in a core term tag," ++
       "but there is no corresponding desugaring rule.")
+  showsPrec _ (NoSuchCase l i) =
+    str "A tag refers to case " . shows i . str " in macro " .
+    shows l . str ", but no such case exists."
+  showsPrec _ (UnboundSubsVar v) =
+    str "Unbound variable " . shows v
+  showsPrec _ (DepthMismatch v) =
+    str "The variable " . shows v . str " appears at an inappropriate depth."
 
 instance Show ResugarFailure where
   showsPrec _ (MatchFailure t p) =

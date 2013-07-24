@@ -73,6 +73,7 @@ termConforms g s t =
       SortName name -> case Map.lookup name g of
         Nothing -> False
         Just cs -> or (map conforms cs)
+      _ -> False
       where
         conforms (Constructor l' ss) =
           (l == l') &&
