@@ -1,5 +1,5 @@
 module Parse where
--- TODO: Export only (parseGrammar, parseRules)
+-- TODO: Export only (parseModule, parseTerm)
 
 import Prelude hiding (const)
 import Text.ParserCombinators.Parsec hiding (label)
@@ -20,8 +20,9 @@ lexer = P.makeTokenParser $ P.LanguageDef {
   P.identLetter = letter,
   P.opStart = upper,
   P.opLetter = letter,
-  P.reservedNames = [grammarStr, rulesStr],
-  P.reservedOpNames = [macHeadStr, macBodyStr],
+  P.reservedNames = [rulesStr, surfaceStr, coreStr],
+  P.reservedOpNames = [intSortStr, floatSortStr, stringSortStr,
+                       macHeadStr, macBodyStr],
   P.caseSensitive = True
   }
 stringLiteral = P.stringLiteral lexer
@@ -41,12 +42,28 @@ braces = P.braces lexer
 
 parse = Text.ParserCombinators.Parsec.parse
 
---parseGrammar = parse grammar
---parseRules = parse rules
+parseModule = Parse.parse top
+parseTerm = Parse.parse term
+
+top :: Parser Module
+top = do
+  symbol coreStr
+  l1 <- language
+  symbol surfaceStr
+  l2 <- language
+  rs <- rules
+  return (Module l1 l2 rs)
+
+language :: Parser Language
+language = do
+  symbol startStr
+  s <- upperId
+  symbol constrStr
+  g <- grammar
+  return (Language g s)
 
 grammar :: Parser Grammar
 grammar = do
-  symbol "grammar"
   ps <- many production
   return (Grammar ps)
 
@@ -54,20 +71,20 @@ production :: Parser Production
 production = do
   l <- label
   symbol hasTypeStr
-  ss <- esort `sepBy` (symbol typeProdStr)
+  ss <- sort `sepBy` (symbol typeProdStr)
   symbol typeArrowStr
-  s <- sort
+  s <- upperId
   symbol terminalStr
-  return (Production l ss s)
+  return (Production (Constructor l ss) s)
 
 sort :: Parser Sort
-sort = liftM Sort upperId
-
-esort :: Parser ESort
-esort = esortList <|> esortScalar
+sort = intSort <|> floatSort <|> stringSort <|> sortList <|> sortName
   where
-    esortScalar = liftM ESort sort
-    esortList = liftM EList (brackets esort)
+    sortName = liftM SortName upperId
+    sortList = liftM SortList (brackets sort)
+    intSort = reservedOp intSortStr >> return IntSort
+    floatSort = reservedOp floatSortStr >> return FloatSort
+    stringSort = reservedOp stringSortStr >> return StringSort
 
 rules :: Parser Rules
 rules = do
@@ -128,7 +145,7 @@ const = try parseInt <|> parseDbl <|> parseStr
 
 var :: Parser Var
 var = do
-  symbol "'"
+  symbol varStr
   t <- lowerId
   return (Var t)
 

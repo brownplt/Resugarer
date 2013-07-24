@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeSynonymInstances #-}
 module Main where
 
 import Pattern
@@ -33,16 +34,30 @@ instance Arbitrary Rules where
 instance Arbitrary Grammar where
   arbitrary = liftM Grammar mediumList
 
-instance Arbitrary Production where
-  arbitrary = liftM3 Production arbitrary smallList arbitrary
+instance Arbitrary ConstructorTable where
+  arbitrary = liftM grammarToConstructorTable arbitrary
 
-instance Arbitrary ESort where
-  arbitrary = oneof [liftM ESort arbitrary,
-                     liftM ESort arbitrary,
-                     liftM EList arbitrary]
+instance Arbitrary Language where
+  arbitrary = liftM (flip Language "Expr") arbitrary
+
+instance Arbitrary Module where
+  arbitrary = liftM3 Module arbitrary arbitrary arbitrary
+
+instance Arbitrary Production where
+  arbitrary = liftM2 Production (liftM2 Constructor arbitrary smallList)
+                                (oneof sorts)
+    where
+      sorts = [return "Expr", return "Struct", return "Other"]
 
 instance Arbitrary Sort where
-  arbitrary = oneof $ map (return . Sort) ["Expr", "Struct"]
+  arbitrary = oneof [return (SortName "Expr"),
+                     return (SortName "Expr"),
+                     return (SortName "Struct"),
+                     return (SortName "Struct"),
+                     return IntSort,
+                     return StringSort,
+                     liftM SortList arbitrary,
+                     liftM SortList arbitrary]
 
 instance Arbitrary Var where
   arbitrary = oneof $ map (return . Var) ["x", "y", "z"]
@@ -134,6 +149,7 @@ main = do
 --  sample (arbitrary :: Gen Pattern)
 --  sample (arbitrary :: Gen Rules)
 --  sample (arbitrary :: Gen Pattern)
+--  sample (arbitrary :: Gen Module)
   putStrLn "Testing parsing..."
   quickCheck (prop_parse label)
   quickCheck (prop_parse sort)
@@ -143,9 +159,10 @@ main = do
   quickCheck (prop_parse pattern)
   quickCheck (prop_parse grammar)
   quickCheck (prop_parse rule)
-  quickCheck (prop_parse rules)
+  quickCheck (prop_parse language)
+  quickCheck (prop_parse top)
   putStrLn "Testing algorithms..."
   deepCheck prop_match    1000
   -- useless (precondition rarely ever satisfied):
-  deepCheck prop_get_put 1000
-  deepCheck prop_put_get 1000
+--  deepCheck prop_get_put 1000
+--  deepCheck prop_put_get 1000

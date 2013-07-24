@@ -1,0 +1,19 @@
+core
+  start Expr
+  constructors
+    Num : Int -> Expr;
+    Var : String -> Expr;
+    Apply : Expr * Expr -> Expr;
+    Lambda : String * Expr -> Expr;
+    Num : Int -> Expr;
+surface
+  start Expr
+  constructors
+    Num : Int -> Expr;
+    Var : String -> Expr;
+    Apply : Expr * Expr -> Expr;
+    Lambda : String * Expr -> Expr;
+    Num : Int -> Expr;
+    Let : String * Expr * Expr -> Expr;
+rules
+  Let(v, x, y) => Apply(Lambda(v, y), x);

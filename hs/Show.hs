@@ -1,23 +1,25 @@
-module Show (grammarStr, rulesStr,
-             repStr, varStr, rewriteStr, assignStr, terminalStr,
+module Show (rulesStr, surfaceStr, coreStr, startStr, constrStr,
+             varStr, rewriteStr, assignStr, terminalStr,
              hasTypeStr, typeProdStr, typeArrowStr,
+             intSortStr, floatSortStr, stringSortStr,
              macBodyStr, macHeadStr, tagStr) where
 
 import Pattern
 import Grammar
 
 
-{- Easy-to-change Syntax -}
+{- Syntax Parameters -}
 
-grammarStr = "grammar"
+surfaceStr = "surface"
+coreStr = "core"
+startStr = "start"
+constrStr = "constructors"
 rulesStr = "rules"
 
-repStr = "..."
-varStr = "'"
+varStr = ""
 rewriteStr = "=>"
 assignStr = "="
 terminalStr = ";"
-
 hasTypeStr = ":"
 typeProdStr = "*"
 typeArrowStr = "->"
@@ -25,6 +27,10 @@ typeArrowStr = "->"
 macBodyStr = "Body"
 macHeadStr = "Head"
 tagStr = "Tag"
+
+intSortStr = "Int"
+floatSortStr = "Float"
+stringSortStr = "String"
 
 
 {- Printing -}
@@ -88,23 +94,48 @@ instance Show Rule where
     spaceSep [shows p, str rewriteStr, shows q] . str terminalStr
 
 instance Show Sort where
-  showsPrec _ (Sort s) = str s
+  showsPrec _ (SortName s) = str s
+  showsPrec _ (SortList s) = brackets (shows s)
+  showsPrec _ IntSort = str intSortStr
+  showsPrec _ FloatSort = str floatSortStr
+  showsPrec _ StringSort = str stringSortStr
 
-instance Show ESort where
-  showsPrec _ (ESort s) = shows s
-  showsPrec _ (EList s) = brackets (shows s)
+instance Show Constructor where
+  showsPrec _ (Constructor l ss) =
+    spaceSep [shows l, str hasTypeStr,
+              sep (" " ++ typeProdStr ++ " ") (map shows ss)]
 
 instance Show Production where
-  showsPrec _ (Production l ss s) =
-    spaceSep [shows l, str hasTypeStr,
-              sep (" " ++ typeProdStr ++ " ") (map shows ss),
-              str typeArrowStr, shows s]
-    . str terminalStr
+  showsPrec _ (Production c s) =
+    spaceSep [shows c, str typeArrowStr, str s] . str terminalStr
 
 instance Show Grammar where
   showsPrec _ (Grammar ps) =
-    newlineSep (str grammarStr : map shows ps)
+    newlineSep (map shows ps)
 
 instance Show Rules where
   showsPrec _ (Rules rs) =
     newlineSep (str rulesStr : map shows rs)
+
+instance Show Language where
+  showsPrec _ (Language g s) =
+    newlineSep [str startStr, str s, str constrStr, shows g]
+
+instance Show Module where
+  showsPrec _ (Module l1 l2 rs) =
+    newlineSep [str coreStr, shows l1, str surfaceStr, shows l2, shows rs]
+
+instance Show ResugarError where
+  showsPrec _ (NoMatchingCase l t) =
+    str "No matching case in macro " . shows l . str " for term " . shows t
+  showsPrec _ (NoSuchMacro l) =
+    str "The label " . shows l . str (" appears in a core term tag," ++
+      "but there is no corresponding desugaring rule.")
+
+instance Show ResugarFailure where
+  showsPrec _ (MatchFailure t p) =
+    str "Could not match " . shows t . str " against " . shows p
+  showsPrec _ TermIsOpaque =
+    str "The term being unexpanded is opaque"
+  showsPrec _ (ResugarError err) = shows err
+

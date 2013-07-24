@@ -53,12 +53,16 @@ data Binding =
 type Env = Map Var Binding
 
 
-data UnifyError = UnifyError Pattern Pattern
+data UnifyFailure = UnifyFailure Pattern Pattern
 
-data ResugarError = MatchError Term Pattern
-                  | NoMatchingCase Label Term
+-- This means something really went wrong
+data ResugarError = NoMatchingCase Label Term
                   | NoSuchMacro Label
-                  | TermIsOpaque
+
+-- Except for `ResugarError`, this just means the term couldn't be resugared.
+data ResugarFailure = MatchFailure Term Pattern
+                    | TermIsOpaque
+                    | ResugarError ResugarError
 
 data WFError = CasesOverlap Label Pattern Pattern Pattern
              | UnboundVar Var
@@ -88,20 +92,20 @@ fvars (PTag _ p) = fvars p
 
 {- Matching -}
 
-match :: Term -> Pattern -> Either ResugarError Env
+match :: Term -> Pattern -> Either ResugarFailure Env
 match (TConst c)   (PConst c')    | c == c' = return mtEnv
 match t            (PVar v)                 = return (singletonEnv v t)
 match (TTag o t)   (PTag o' p)    | o == o' = match t p
 match (TNode l ts) (PNode l' ps)  | l == l' = matchNode l ts ps
 match (TList ts)   (PList p)                = matchList ts p
-match t            p                        = Left (MatchError t p)
+match t            p                        = Left (MatchFailure t p)
 
-matchNode :: Label -> [Term] -> [Pattern] -> Either ResugarError Env
+matchNode :: Label -> [Term] -> [Pattern] -> Either ResugarFailure Env
 matchNode _ [] [] = return mtEnv
 matchNode l (t:ts) (p:ps) = liftM2 unifyEnv (match t p) (matchNode l ts ps)
-matchNode l ts ps = Left (MatchError (TNode l ts) (PNode l ps))
+matchNode l ts ps = Left (MatchFailure (TNode l ts) (PNode l ps))
 
-matchList :: [Term] -> Pattern -> Either ResugarError Env
+matchList :: [Term] -> Pattern -> Either ResugarFailure Env
 matchList []     p = return $ Map.fromList $
   map (\v -> (v, BList [])) (Set.toList (fvars p))
 matchList (t:ts) p = liftM mergeEnvs (zipWithM match (t:ts) (repeat p))
@@ -159,7 +163,7 @@ splitEnv e vs =
 
 {- Unification -}
 
-unify :: Pattern -> Pattern -> Either UnifyError Pattern
+unify :: Pattern -> Pattern -> Either UnifyFailure Pattern
 unify (PConst c)   (PConst c')       | c == c' = return (PConst c)
 unify (PVar v)     p                           = return p
 unify p            (PVar v)                    = return p
@@ -167,7 +171,7 @@ unify (PTag o p)   (PTag o' p')      | o == o' = liftM (PTag o) (unify p p')
 unify (PList p)    (PList p')                  = liftM PList (unify p p')
 unify (PNode l ps) (PNode l' ps')    | l == l' && length ps == length ps'
   = liftM (PNode l) (zipWithM unify ps ps')
-unify p q = Left (UnifyError p q)
+unify p q = Left (UnifyFailure p q)
 
 subsumed :: Pattern -> Pattern -> Bool
 subsumed _            (PVar _)                 = True
@@ -181,17 +185,17 @@ subsumed _            _                        = False
 
 {- Macros -}
 
-expandMacro :: Macro -> Term -> Either ResugarError (Int, Term)
+expandMacro :: Macro -> Term -> Either ResugarFailure (Int, Term)
 expandMacro (Macro name cs) t = expandCases 0 cs
   where
-    expandCases _ [] = Left (NoMatchingCase name t)
+    expandCases _ [] = Left (ResugarError (NoMatchingCase name t))
     expandCases i (c:cs) = eitherOr (expandCase i c) (expandCases (i + 1) cs)
     
     expandCase i (Rule p p') = do
       e <- match t p
       return (i, subs e p')
 
-unexpandMacro :: Macro -> (Int, Term) -> Term -> Either ResugarError Term
+unexpandMacro :: Macro -> (Int, Term) -> Term -> Either ResugarFailure Term
 unexpandMacro (Macro l cs) (i, t') t =
   if i >= length cs
   then internalError ("Macro index out of range in " ++ show l)
@@ -240,7 +244,7 @@ wellFormedPattern l (PList p) = do
 lookupMacro :: Label -> MacroTable -> Maybe Macro
 lookupMacro l ms = Map.lookup l ms
 
-expand :: MacroTable -> Term -> Either ResugarError Term
+expand :: MacroTable -> Term -> Either ResugarFailure Term
 expand _ (TConst c) = return (TConst c)
 expand ms (TTag o t) = liftM (TTag o) ((expand ms) t)
 expand ms t@(TNode l ts) =
@@ -250,13 +254,13 @@ expand ms t@(TNode l ts) =
       (i, t') <- expandMacro m t
       expand ms (TTag (MacHead l i (TNode l ts)) t')
 
-unexpand :: MacroTable -> Term -> Either ResugarError Term
+unexpand :: MacroTable -> Term -> Either ResugarFailure Term
 unexpand _ (TConst c) = return (TConst c)
 unexpand ms (TNode l ts) = liftM (TNode l) (mapM (unexpand ms) ts)
 unexpand ms (TTag MacBody _) = Left TermIsOpaque
 unexpand ms (TTag (MacHead l i t) t') =
   case lookupMacro l ms of
-    Nothing -> Left (NoSuchMacro l)
+    Nothing -> Left (ResugarError (NoSuchMacro l))
     Just l -> unexpandMacro l (i, t') t >>= unexpand ms
 
 
