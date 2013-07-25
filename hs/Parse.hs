@@ -16,13 +16,14 @@ lexer = P.makeTokenParser $ P.LanguageDef {
   P.commentEnd = "*)",
   P.commentLine = "",
   P.nestedComments = True,
-  P.identStart = lower,
-  P.identLetter = letter,
-  P.opStart = upper,
-  P.opLetter = letter,
-  P.reservedNames = [rulesStr, surfaceStr, coreStr],
-  P.reservedOpNames = [intSortStr, floatSortStr, stringSortStr,
-                       macHeadStr, macBodyStr],
+  P.identStart = letter,
+  P.identLetter = letter <|> char '_',
+  P.opStart = oneOf [],
+  P.opLetter = oneOf [],
+  P.reservedNames = [rulesStr, surfaceStr, coreStr,
+                     intSortStr, floatSortStr, stringSortStr,
+                     macHeadStr, macBodyStr],
+  P.reservedOpNames = [],
   P.caseSensitive = True
   }
 stringLiteral = P.stringLiteral lexer
@@ -31,8 +32,7 @@ integer = P.integer lexer
 float = P.float lexer
 space = P.whiteSpace lexer
 symbol = P.symbol lexer
-upperId = P.operator lexer
-lowerId = P.identifier lexer
+iden = P.identifier lexer
 reservedOp = P.reservedOp lexer
 
 commaSep = P.commaSep lexer
@@ -57,7 +57,7 @@ top = do
 language :: Parser Language
 language = do
   symbol startStr
-  s <- upperId
+  s <- sortName
   symbol constrStr
   g <- grammar
   return (Language g s)
@@ -73,14 +73,14 @@ production = do
   symbol hasTypeStr
   ss <- sort `sepBy` (symbol typeProdStr)
   symbol typeArrowStr
-  s <- upperId
+  s <- iden
   symbol terminalStr
-  return (Production (Constructor l ss) s)
+  return (Production (Constructor l ss) (SortN s))
 
 sort :: Parser Sort
-sort = intSort <|> floatSort <|> stringSort <|> sortList <|> sortName
+sort = intSort <|> floatSort <|> stringSort <|> sortList <|> simpleSort
   where
-    sortName = liftM SortName upperId
+    simpleSort = liftM SortName sortName
     sortList = liftM SortList (brackets sort)
     intSort = reservedOp intSortStr >> return IntSort
     floatSort = reservedOp floatSortStr >> return FloatSort
@@ -146,8 +146,11 @@ const = try parseInt <|> parseDbl <|> parseStr
 var :: Parser Var
 var = do
   symbol varStr
-  t <- lowerId
+  t <- iden
   return (Var t)
+
+sortName :: Parser SortName
+sortName = liftM SortN iden
 
 origin :: Parser Origin
 origin = origBody <|> origHead
@@ -165,4 +168,4 @@ origin = origBody <|> origHead
       return (MacHead m (fromIntegral i) t)
 
 label :: Parser Label
-label = liftM Label upperId
+label = liftM Label iden

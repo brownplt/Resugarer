@@ -38,7 +38,7 @@ instance Arbitrary ConstructorTable where
   arbitrary = liftM grammarToConstructorTable arbitrary
 
 instance Arbitrary Language where
-  arbitrary = liftM (flip Language "Expr") arbitrary
+  arbitrary = liftM (flip Language (SortN "Expr")) arbitrary
 
 instance Arbitrary Module where
   arbitrary = liftM3 Module arbitrary arbitrary arbitrary
@@ -47,13 +47,16 @@ instance Arbitrary Production where
   arbitrary = liftM2 Production (liftM2 Constructor arbitrary smallList)
                                 (oneof sorts)
     where
-      sorts = [return "Expr", return "Struct", return "Other"]
+      sorts = map (return . SortN) ["Expr", "Struct", "Other"]
+
+instance Arbitrary SortName where
+  arbitrary = oneof [return (SortN "Expr"),
+                     return (SortN "Struct")]
 
 instance Arbitrary Sort where
-  arbitrary = oneof [return (SortName "Expr"),
-                     return (SortName "Expr"),
-                     return (SortName "Struct"),
-                     return (SortName "Struct"),
+  arbitrary = oneof [liftM SortName arbitrary,
+                     liftM SortName arbitrary,
+                     liftM SortName arbitrary,
                      return IntSort,
                      return StringSort,
                      liftM SortList arbitrary,

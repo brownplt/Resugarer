@@ -16,7 +16,7 @@ startStr = "start"
 constrStr = "constructors"
 rulesStr = "rules"
 
-varStr = ""
+varStr = "'"
 rewriteStr = "=>"
 assignStr = "="
 terminalStr = ";"
@@ -100,8 +100,11 @@ instance Show Rule where
   showsPrec _ (Rule p q) =
     spaceSep [shows p, str rewriteStr, shows q] . str terminalStr
 
+instance Show SortName where
+  showsPrec _ (SortN s) = str s
+
 instance Show Sort where
-  showsPrec _ (SortName s) = str s
+  showsPrec _ (SortName s) = shows s
   showsPrec _ (SortList s) = brackets (shows s)
   showsPrec _ IntSort = str intSortStr
   showsPrec _ FloatSort = str floatSortStr
@@ -114,7 +117,7 @@ instance Show Constructor where
 
 instance Show Production where
   showsPrec _ (Production c s) =
-    spaceSep [shows c, str typeArrowStr, str s] . str terminalStr
+    spaceSep [shows c, str typeArrowStr, shows s] . str terminalStr
 
 instance Show Grammar where
   showsPrec _ (Grammar ps) =
@@ -126,7 +129,7 @@ instance Show Rules where
 
 instance Show Language where
   showsPrec _ (Language g s) =
-    newlineSep [str startStr, str s, str constrStr, shows g]
+    newlineSep [str startStr, shows s, str constrStr, shows g]
 
 instance Show Module where
   showsPrec _ (Module l1 l2 rs) =

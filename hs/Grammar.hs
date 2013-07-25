@@ -4,7 +4,8 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Pattern
 
-type SortName = String
+newtype SortName = SortN String
+                 deriving (Eq, Ord)
 
 data Sort = SortName SortName
           | SortList Sort
