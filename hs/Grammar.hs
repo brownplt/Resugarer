@@ -43,11 +43,12 @@ rulesToMacros (Rules rs) = f (reverse rs) Map.empty
   where
     f [] ms = ms
     f (c@(Rule (PNode l _) _) : rs) ms =
-      case Map.lookup l ms of
-        Nothing ->
-          Map.insert l (Macro l [c]) ms
-        Just (Macro l cs) ->
-          Map.insert l (Macro l (c : cs)) ms
+      let ms' = case Map.lookup l ms of
+            Nothing ->
+              Map.insert l (Macro l [c]) ms
+            Just (Macro l cs) ->
+              Map.insert l (Macro l (c : cs)) ms
+      in f rs ms'
 
 grammarToConstructorTable :: Grammar -> ConstructorTable
 grammarToConstructorTable (Grammar ps) =

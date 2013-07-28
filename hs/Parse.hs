@@ -36,6 +36,7 @@ iden = P.identifier lexer
 reservedOp = P.reservedOp lexer
 
 commaSep = P.commaSep lexer
+commaSep1 = P.commaSep1 lexer
 parens = P.parens lexer
 brackets = P.brackets lexer
 braces = P.braces lexer
@@ -113,8 +114,16 @@ pattern = do
       where
         pVar = liftM PVar var
         pConst = liftM PConst const
-        pList = liftM PList (brackets pattern)
+        pList = brackets pListElems
         pNode = liftM2 PNode label (parens (commaSep pattern))
+        pListElems = do
+          xs <- commaSep pattern
+          r <- optionMaybe (symbol repStr)
+          case r of
+            Nothing -> return (PList xs)
+            Just _ -> case xs of
+              [] -> fail "Invalid list."
+              _:_ -> return (PRep (init xs) (last xs))
     addTags [] p = p
     addTags (o:os) p = addTags os (PTag o p)
 
@@ -126,10 +135,11 @@ term = do
     Nothing -> return t
     Just os -> return (addTags os t)
   where    
-    untaggedTerm = tConst <|> tNode
+    untaggedTerm = tConst <|> tNode <|> tList
       where
         tConst = liftM TConst const
         tNode = liftM2 TNode label (parens (commaSep term))
+        tList = liftM TList (brackets (commaSep term))
     addTags [] t = t
     addTags (o:os) t = addTags os (TTag o t)
 

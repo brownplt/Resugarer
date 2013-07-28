@@ -1,7 +1,7 @@
 module Show (rulesStr, surfaceStr, coreStr, startStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr,
              hasTypeStr, typeProdStr, typeArrowStr,
-             intSortStr, floatSortStr, stringSortStr,
+             intSortStr, floatSortStr, stringSortStr, repStr,
              macBodyStr, macHeadStr, tagStr) where
 
 import Pattern
@@ -23,6 +23,7 @@ terminalStr = ";"
 hasTypeStr = ":"
 typeProdStr = "*"
 typeArrowStr = "->"
+repStr = "..."
 
 macBodyStr = "Body"
 macHeadStr = "Head"
@@ -57,7 +58,9 @@ braces   = surround "{" "}"
 instance Show Pattern where
   showsPrec _ (PVar v) = shows v
   showsPrec _ (PConst c) = shows c
-  showsPrec _ (PList p) = brackets (shows p)
+  showsPrec _ (PList ps) = brackets (commaSep (map shows ps))
+  showsPrec _ (PRep ps p) =
+    brackets (commaSep (map shows ps ++ [shows p]) . str repStr)
   showsPrec _ (PTag o p) = showTags [o] p
     where
       showTags os (PTag o p) = showTags (o:os) p

@@ -20,7 +20,8 @@ data Pattern =
     PVar Var
   | PConst Const
   | PNode Label [Pattern]
-  | PList Pattern
+  | PRep [Pattern] Pattern
+  | PList [Pattern]
   | PTag Origin Pattern
     deriving (Eq)
 
@@ -86,8 +87,21 @@ fvars :: Pattern -> Set Var
 fvars (PVar v) = Set.singleton v
 fvars (PConst _) = Set.empty
 fvars (PNode _ ps) = Set.unions (map fvars ps)
-fvars (PList p) = fvars p
+fvars (PRep ps p) = Set.union (Set.unions (map fvars ps)) (fvars p)
+fvars (PList ps) = Set.unions (map fvars ps)
 fvars (PTag _ p) = fvars p
+
+bodyWrap :: Pattern -> Pattern
+-- Enclose all of a pattern's subpatterns in MacBody tags.
+bodyWrap (PVar v) = PVar v
+bodyWrap (PConst c) = PConst c
+bodyWrap (PNode l ps) = PTag MacBody (PNode l (map bodyWrap ps))
+bodyWrap (PRep ps p) = PRep (map bodyWrap ps) (bodyWrap p)
+bodyWrap (PList ps) = PList (map bodyWrap ps)
+bodyWrap (PTag o p) = PTag MacBody (skipTags (PTag o p))
+  where
+    skipTags (PTag o p) = PTag o (skipTags p)
+    skipTags p = bodyWrap p
 
 
 {- Matching -}
@@ -97,7 +111,12 @@ match (TConst c)   (PConst c')    | c == c' = return mtEnv
 match t            (PVar v)                 = return (singletonEnv v t)
 match (TTag o t)   (PTag o' p)    | o == o' = match t p
 match (TNode l ts) (PNode l' ps)  | l == l' = matchNode l ts ps
-match (TList ts)   (PList p)                = matchList ts p
+match (TList ts)   (PList ps)     | length ts == length ps =
+  liftM mergeEnvs (zipWithM match ts ps)
+match (TList ts)   (PRep ps p)    | length ts >= length ps = do
+  e1 <- liftM mergeEnvs (zipWithM match (take (length ps) ts) ps)
+  e2 <- matchList ts p
+  return (unifyEnv e1 e2)
 match t            p                        = Left (MatchFailure t p)
 
 matchNode :: Label -> [Term] -> [Pattern] -> Either ResugarFailure Env
@@ -129,7 +148,8 @@ subs e (PVar v) = case Map.lookup v e of
   Just (BList _) -> Left (ResugarError (DepthMismatch v))
 subs e (PConst c)    = return (TConst c)
 subs e (PNode l ps)  = liftM (TNode l) (mapM (subs e) ps)
-subs e (PList p)     = liftM TList (subsList e p)
+subs e (PList ps)    = liftM TList (mapM (subs e) ps)
+subs e (PRep ps p)   = liftM TList (liftM2 (++) (mapM (subs e) ps) (subsList e p))
 subs e (PTag o p)    = liftM (TTag o) (subs e p)
 
 subsList e p = do
@@ -160,14 +180,14 @@ splitEnv e vs = do
       else return b
 
 
-{- Unification -}
+{- Unification (incomplete) -}
 
 unify :: Pattern -> Pattern -> Either UnifyFailure Pattern
 unify (PConst c)   (PConst c')       | c == c' = return (PConst c)
 unify (PVar v)     p                           = return p
 unify p            (PVar v)                    = return p
 unify (PTag o p)   (PTag o' p')      | o == o' = liftM (PTag o) (unify p p')
-unify (PList p)    (PList p')                  = liftM PList (unify p p')
+unify (PRep ps p)  (PRep ps' p')              = undefined
 unify (PNode l ps) (PNode l' ps')    | l == l' && length ps == length ps'
   = liftM (PNode l) (zipWithM unify ps ps')
 unify p q = Left (UnifyFailure p q)
@@ -176,7 +196,7 @@ subsumed :: Pattern -> Pattern -> Bool
 subsumed _            (PVar _)                 = True
 subsumed (PConst c)   (PConst c')    | c == c' = True
 subsumed (PTag o p)   (PTag o' p')   | o == o' = subsumed p p'
-subsumed (PList p)    (PList p')               = subsumed p p'
+subsumed (PRep ps p)  (PRep ps' p')            = undefined
 subsumed (PNode l ps) (PNode l' ps') | l == l' && length ps == length ps'
   = and (zipWith subsumed ps ps')
 subsumed _            _                        = False
@@ -192,7 +212,7 @@ expandMacro (Macro name cs) t = expandCases 0 cs
     
     expandCase i (Rule p p') = do
       e <- match t p
-      t <- subs e p'
+      t <- subs e (bodyWrap p')
       return (i, t)
 
 unexpandMacro :: Macro -> (Int, Term) -> Term -> Either ResugarFailure Term
@@ -234,7 +254,9 @@ wellFormedPattern _ (PVar _) = return ()
 wellFormedPattern _ (PConst _) = return ()
 wellFormedPattern l (PTag _ p) = wellFormedPattern l p
 wellFormedPattern l (PNode _ ps) = mapM_ (wellFormedPattern l) ps
-wellFormedPattern l (PList p) = do
+wellFormedPattern l (PList ps) = mapM_ (wellFormedPattern l) ps
+wellFormedPattern l (PRep ps p) = do
+  mapM_ (wellFormedPattern l) ps
   wellFormedPattern l p
   when (Set.null (fvars p)) (Left (EmptyEllipsis l))
 

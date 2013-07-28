@@ -78,6 +78,7 @@ instance Arbitrary Pattern where
                 liftM2 PNode (smaller arbitrary) (smaller arbitrary),
                 liftM2 PNode (smaller arbitrary) (smaller arbitrary),
                 liftM PList (smaller arbitrary),
+                liftM2 PRep (smaller arbitrary) (smaller arbitrary),
                 liftM2 PTag arbitrary (smaller arbitrary)]
 
 termGen :: Gen Term

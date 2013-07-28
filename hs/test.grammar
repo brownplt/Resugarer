@@ -6,6 +6,8 @@ core
     Apply : Expr * Expr -> Expr;
     Lambda : String * Expr -> Expr;
     Num : Int -> Expr;
+    Begin : [Expr] -> Expr;
+    If : Expr * Expr -> Expr;
 surface
   start Expr
   constructors
@@ -14,6 +16,13 @@ surface
     Apply : Expr * Expr -> Expr;
     Lambda : String * Expr -> Expr;
     Num : Int -> Expr;
+    Begin : [Expr] -> Expr;
+    If : Expr * Expr -> Expr;
     Let : String * Expr * Expr -> Expr;
+    Cond : [CondCase] -> Expr;
+    CondCase : Expr * Expr -> CondCase;
 rules
-  Let(v, x, y) => Apply(Lambda(v, y), x);
+  Let('v, 'x, 'y) => Apply(Lambda('v, 'y), 'x);
+  Cond([]) => Num(0);
+  Cond([CondCase('x, 'y), 'zs ...]) =>
+    If('x, 'y, Cond(['zs ...]));
