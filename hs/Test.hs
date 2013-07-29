@@ -10,6 +10,7 @@ import Prelude hiding (const)
 import Test.QuickCheck hiding (label)
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.Maybe (isJust)
+import Control.Exception (assert)
 
 smallList :: Arbitrary a => Gen [a]
 smallList = oneof (map (\i -> vectorOf i arbitrary)
@@ -114,7 +115,8 @@ instance Arbitrary CoreTerm where
         t <- arbitrary
         return (CoreTerm i t)
 
-deepCheck x n = quickCheckWith stdArgs {maxSuccess = n} x
+deepCheck x n = do
+  quickCheckWith stdArgs {maxSuccess = n} x
 
 prop_parse p x =
   case parse p "(quickcheck-test)" (show x) of
@@ -122,9 +124,8 @@ prop_parse p x =
     Right y -> x == y
 
 prop_match t p =
-  if isLeft (wellFormedPattern (Label "M") p)
-  then True
-  else case match t p of
+  isLeft (wellFormedPattern (Label "M") p) ==>
+  case match t p of
     Left _ -> True
     Right e -> case (subs e p) of
       Left _ -> False
@@ -151,12 +152,34 @@ prop_put_get m t (CoreTerm i t') =
       Right t2' -> t2' == (i, t')
 
 main = do
+  tests "matching" [
+    (subsTest (TConst (CInt 1))
+              (PConst (CInt 1))),
+    (subsTest (TConst (CInt 1))
+              (PVar (Var "x"))),
+    (subsTest (TNode (Label "l") [TConst (CInt 1)])
+              (PNode (Label "l") [PVar (Var "y")])),
+    (subsTest (TList [])
+              (PList [])),
+    (subsTest (TList [TConst (CStr "one")])
+              (PList [PConst (CStr "one")])),
+    (subsTest (TList [TConst (CStr "one")])
+              (PRep [] (PVar (Var "x")))),
+    (subsTest (TList [TConst (CStr "one"), TConst (CStr "two")])
+              (PRep [] (PVar (Var "x")))),
+    (subsTest (TList [TConst (CStr "one"), TConst (CStr "two")])
+              (PRep [PVar (Var "x"), PVar (Var "y")] (PVar (Var "z")))),
+    (subsTest (TList [TConst (CStr "one"), TConst (CStr "two")])
+              (PRep [PVar (Var "x")] (PVar (Var "y")))),
+    (subsTest (TList [])
+              (PRep [] (PVar (Var "x"))))]
+
 --  sample (arbitrary :: Gen Grammar)
 --  sample (arbitrary :: Gen Pattern)
 --  sample (arbitrary :: Gen Rules)
 --  sample (arbitrary :: Gen Pattern)
 --  sample (arbitrary :: Gen Module)
-  putStrLn "Testing parsing..."
+  putStrLn "\nTesting parsing..."
   quickCheck (prop_parse label)
   quickCheck (prop_parse sort)
   quickCheck (prop_parse const)
@@ -167,8 +190,32 @@ main = do
   quickCheck (prop_parse rule)
   quickCheck (prop_parse language)
   quickCheck (prop_parse top)
-  putStrLn "Testing algorithms..."
-  deepCheck prop_match    1000
+  putStrLn "\nTesting algorithms..."
+  deepCheck prop_match 250
+  deepCheck prop_match 250
+  deepCheck prop_match 250
+  deepCheck prop_match 250
   -- useless (precondition rarely ever satisfied):
 --  deepCheck prop_get_put 1000
 --  deepCheck prop_put_get 1000
+
+subsTest :: Term -> Pattern -> (Either ResugarFailure Term,
+                                Either ResugarFailure Term)
+subsTest t p = (match t p >>= (\e -> subs e p), Right t)
+
+tests :: (Show a, Eq a) => String -> [(a, a)] -> IO ()
+tests msg ts = do
+  putStrLn ("\nTesting " ++ msg ++ "...")
+  results <- mapM test ts
+  let failures = sum results
+  if failures == 0
+    then putStrLn ("OK, passed " ++ show (length ts) ++ " tests.")
+    else putStrLn ("Failed " ++ show failures ++ " out of "
+                   ++ show (length ts) ++ " tests.")
+  where
+    test (x, y) =
+      if x == y
+      then return 0
+      else do
+        putStrLn ("*** FAILURE: Expected " ++ show y ++ ", found " ++ show x)
+        return 1

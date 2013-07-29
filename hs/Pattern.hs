@@ -63,11 +63,13 @@ data ResugarError = NoMatchingCase Label Term
                   | NoSuchCase Label Int
                   | UnboundSubsVar Var
                   | DepthMismatch Var
+                  deriving (Eq)
 
 -- Except for `ResugarError`, this just means the term couldn't be resugared.
 data ResugarFailure = MatchFailure Term Pattern
                     | TermIsOpaque
                     | ResugarError ResugarError
+                    deriving (Eq)
 
 data WFError = CasesOverlap Label Pattern Pattern Pattern
              | UnboundVar Var
@@ -112,10 +114,10 @@ match t            (PVar v)                 = return (singletonEnv v t)
 match (TTag o t)   (PTag o' p)    | o == o' = match t p
 match (TNode l ts) (PNode l' ps)  | l == l' = matchNode l ts ps
 match (TList ts)   (PList ps)     | length ts == length ps =
-  liftM mergeEnvs (zipWithM match ts ps)
+  liftM Map.unions (zipWithM match ts ps)
 match (TList ts)   (PRep ps p)    | length ts >= length ps = do
-  e1 <- liftM mergeEnvs (zipWithM match (take (length ps) ts) ps)
-  e2 <- matchList ts p
+  e1 <- liftM Map.unions (zipWithM match (take (length ps) ts) ps)
+  e2 <- matchList (drop (length ps) ts) p
   return (unifyEnv e1 e2)
 match t            p                        = Left (MatchFailure t p)
 
@@ -223,7 +225,7 @@ unexpandMacro (Macro l cs) (i, t') t =
     where
       unexpandCase (Rule p p') = do
         e <- match t p
-        e' <- match t' p'
+        e' <- match t' (bodyWrap p')
         subs (composeEnvs e e') p
 
 

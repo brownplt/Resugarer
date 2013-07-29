@@ -3,6 +3,10 @@
   
     (define-syntax-rule (thunk x) (λ () x))
   
+  ; Common data structures
+  (struct Tagged (tags term) #:transparent)
+  (struct CouldNotUnexpand ())
+  
   (define id (λ (x) x))
   
   ; range : int -> [int]
@@ -106,6 +110,13 @@
   (define (string-prefix? prefix string)
     (and (>= (string-length string) (string-length prefix))
          (string=? prefix (substring string 0 (string-length prefix)))))
+  
+  ; strip-prefix : string -> string -> string | #f
+  ; Strip 'prefix' off of the front of 'string', else return #f
+  (define (strip-prefix prefix string)
+    (if (string-prefix? prefix string)
+        (substring string (string-length prefix))
+        #f))
   
   ; symbol-prefix? : string -> symbol -> bool
   ; Does 'symbol' begin with 'prefix'?

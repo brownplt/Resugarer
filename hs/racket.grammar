@@ -1,0 +1,25 @@
+core
+  start Expr
+  constructors
+    Num : String -> Expr;
+    Str : String -> Expr;
+    Id : String -> Expr;
+    Lambda : [String] * Expr -> Expr;
+    Apply : Expr * [Expr] -> Expr;
+    Begin : [Expr] -> Expr;
+surface
+  start Expr
+  constructors
+    Num : String -> Expr;
+    Str : String -> Expr;
+    Id : String -> Expr;
+    Lambda : [String] * Expr -> Expr;
+    Apply : Expr * [Expr] -> Expr;
+    Begin : [Expr] -> Expr;
+
+    Binding : String * Expr -> Binding;
+    Let : [Binding] * [Expr] -> Expr;
+rules
+  Let([], ['x ...]) => Begin(['x ...]);
+  Let([Binding('v, 'b), 'bs ...], 'x) =>
+    Apply(Lambda(['v], Let(['bs ...], 'x)), ['b]);
