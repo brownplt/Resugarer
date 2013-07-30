@@ -35,6 +35,7 @@ data Term =
 data Origin =
     MacHead Label Int Term
   | MacBody
+  | MacAlien
 
 data Const =
     CInt Int
@@ -278,16 +279,31 @@ expand ms t@(TNode l ts) =
     Just m -> do
       (i, t') <- expandMacro m t
       expand ms (TTag (MacHead l i (TNode l ts)) t')
-
+ 
 unexpand :: MacroTable -> Term -> Either ResugarFailure Term
-unexpand _ (TConst c) = return (TConst c)
-unexpand ms (TList ts) = liftM TList (mapM (unexpand ms) ts)
-unexpand ms (TNode l ts) = liftM (TNode l) (mapM (unexpand ms) ts)
-unexpand ms (TTag MacBody _) = Left TermIsOpaque
-unexpand ms (TTag (MacHead l i t) t') =
-  case lookupMacro l ms of
-    Nothing -> Left (ResugarError (NoSuchMacro l))
-    Just l -> unexpandMacro l (i, t') t >>= unexpand ms
+unexpand ms t = do
+  t' <- rec t
+  if unlittered t'
+    then return t'
+    else Left TermIsOpaque
+  where
+    unlittered :: Term -> Bool
+    unlittered (TConst c) = True
+    unlittered (TList ts) = and (map unlittered ts)
+    unlittered (TNode _ ts) = and (map unlittered ts)
+    unlittered (TTag _ _) = False
+    
+    rec :: Term -> Either ResugarFailure Term
+    rec (TConst c) = return (TConst c)
+    rec (TList ts) = liftM TList (mapM rec ts)
+    rec (TNode l ts) = liftM (TNode l) (mapM rec ts)
+    rec (TTag (MacHead l i t) t') =
+      case lookupMacro l ms of
+        Nothing -> Left (ResugarError (NoSuchMacro l))
+        Just l -> do
+          t' <- rec t'
+          unexpandMacro l (i, t') t
+    rec (TTag o t') = liftM (TTag o) (rec t')
 
 
 {- Errors as Eithers -}

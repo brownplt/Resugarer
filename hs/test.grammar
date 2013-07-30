@@ -22,7 +22,7 @@ surface
     Cond : [CondCase] -> Expr;
     CondCase : Expr * Expr -> CondCase;
 rules
-  Let('v, 'x, 'y) => Apply(Lambda('v, 'y), 'x);
-  Cond([]) => Num(0);
-  Cond([CondCase('x, 'y), 'zs ...]) =>
-    If('x, 'y, Cond(['zs ...]));
+  Let(v, x, y) -> Apply(Lambda(v, y), x);
+  Cond([]) -> Num(0);
+  Cond([CondCase(x, y), zs ...]) ->
+    If(x, y, Cond([zs ...]));

@@ -16,10 +16,10 @@ lexer = P.makeTokenParser $ P.LanguageDef {
   P.commentEnd = "*)",
   P.commentLine = "",
   P.nestedComments = True,
-  P.identStart = letter,
+  P.identStart = upper,
   P.identLetter = letter <|> char '_',
-  P.opStart = oneOf [],
-  P.opLetter = oneOf [],
+  P.opStart = lower,
+  P.opLetter = letter <|> char '_',
   P.reservedNames = [rulesStr, surfaceStr, coreStr,
                      intSortStr, floatSortStr, stringSortStr,
                      macHeadStr, macBodyStr],
@@ -33,6 +33,7 @@ float = P.float lexer
 space = P.whiteSpace lexer
 symbol = P.symbol lexer
 iden = P.identifier lexer
+op = P.operator lexer
 reservedOp = P.reservedOp lexer
 
 commaSep = P.commaSep lexer
@@ -69,7 +70,10 @@ grammar = do
   return (Grammar ps)
 
 production :: Parser Production
-production = do
+production = try shortProduction <|> longProduction
+
+longProduction :: Parser Production
+longProduction = do
   l <- label
   symbol hasTypeStr
   ss <- sort `sepBy` (symbol typeProdStr)
@@ -77,6 +81,15 @@ production = do
   s <- iden
   symbol terminalStr
   return (Production (Constructor l ss) (SortN s))
+
+shortProduction :: Parser Production
+shortProduction = do
+  l <- label
+  symbol hasTypeStr
+  s <- iden
+  symbol terminalStr
+  return (Production (Constructor l []) (SortN s))
+
 
 sort :: Parser Sort
 sort = intSort <|> floatSort <|> stringSort <|> sortList <|> simpleSort
@@ -115,7 +128,12 @@ pattern = do
         pVar = liftM PVar var
         pConst = liftM PConst const
         pList = brackets pListElems
-        pNode = liftM2 PNode label (parens (commaSep pattern))
+        pNode = do
+          l <- label
+          args <- optionMaybe (parens (commaSep pattern))
+          case args of
+            Nothing -> return (PNode l [])
+            Just args -> return (PNode l args)
         pListElems = do
           xs <- commaSep pattern
           r <- optionMaybe (symbol repStr)
@@ -156,16 +174,17 @@ const = try parseInt <|> parseDbl <|> parseStr
 var :: Parser Var
 var = do
   symbol varStr
-  t <- iden
+  t <- op
   return (Var t)
 
 sortName :: Parser SortName
 sortName = liftM SortN iden
 
 origin :: Parser Origin
-origin = origBody <|> origHead
+origin = origBody <|> origAlien <|> origHead
   where
     origBody = reservedOp macBodyStr >> return MacBody
+    origAlien = reservedOp macAlienStr >> return MacAlien
     origHead = do
       symbol macHeadStr
       symbol "("

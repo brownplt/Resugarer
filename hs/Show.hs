@@ -2,7 +2,7 @@ module Show (rulesStr, surfaceStr, coreStr, startStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr,
              hasTypeStr, typeProdStr, typeArrowStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
-             macBodyStr, macHeadStr, tagStr) where
+             macBodyStr, macAlienStr, macHeadStr, tagStr) where
 
 import Pattern
 import Grammar
@@ -16,8 +16,8 @@ startStr = "start"
 constrStr = "constructors"
 rulesStr = "rules"
 
-varStr = "'"
-rewriteStr = "=>"
+varStr = ""
+rewriteStr = "->"
 assignStr = "="
 terminalStr = ";"
 hasTypeStr = ":"
@@ -27,6 +27,7 @@ repStr = "..."
 
 macBodyStr = "Body"
 macHeadStr = "Head"
+macAlienStr = "Alien"
 tagStr = "Tag"
 
 intSortStr = "Int"
@@ -66,6 +67,7 @@ instance Show Pattern where
       showTags os (PTag o p) = showTags (o:os) p
       showTags os p          =
         shows p . braces (brackets (commaSep (map shows os)))
+  showsPrec _ (PNode l []) = shows l
   showsPrec _ (PNode l ps) = shows l . parens (commaSep (map shows ps))
 
 instance Show Term where
@@ -89,6 +91,7 @@ instance Show Var where
 instance Show Origin where
   showsPrec _ (MacHead m i t) =
     str macHeadStr . parens (commaSep [shows m, shows i, shows t])
+  showsPrec _ MacAlien = str macAlienStr
   showsPrec _ MacBody = str macBodyStr
 
 instance Show Binding where

@@ -11,6 +11,8 @@ import Test.QuickCheck hiding (label)
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.Maybe (isJust)
 import Control.Exception (assert)
+import qualified Data.Map as Map
+import Data.Map (Map)
 
 smallList :: Arbitrary a => Gen [a]
 smallList = oneof (map (\i -> vectorOf i arbitrary)
@@ -151,6 +153,11 @@ prop_put_get m t (CoreTerm i t') =
       Left _ -> False
       Right t2' -> t2' == (i, t')
 
+testMacroTable = Map.fromList $ [(Label "Swap", Macro (Label "Swap") [rule])]
+  where
+    rule = Rule (PList [(PVar (Var "x")), (PVar (Var "y"))])
+                (PList [(PVar (Var "y")), (PVar (Var "x"))])
+
 main = do
   tests "matching" [
     (subsTest (TConst (CInt 1))
@@ -173,6 +180,9 @@ main = do
               (PRep [PVar (Var "x")] (PVar (Var "y")))),
     (subsTest (TList [])
               (PRep [] (PVar (Var "x"))))]
+  tests "macros" [
+    (macroTest testMacroTable
+     (TList [TConst (CInt 1), TList [TConst (CInt 2)]]))]
 
 --  sample (arbitrary :: Gen Grammar)
 --  sample (arbitrary :: Gen Pattern)
@@ -202,6 +212,10 @@ main = do
 subsTest :: Term -> Pattern -> (Either ResugarFailure Term,
                                 Either ResugarFailure Term)
 subsTest t p = (match t p >>= (\e -> subs e p), Right t)
+
+macroTest :: MacroTable -> Term -> (Either ResugarFailure Term,
+                                    Either ResugarFailure Term)
+macroTest ms t = (expand ms t >>= unexpand ms, Right t)
 
 tests :: (Show a, Eq a) => String -> [(a, a)] -> IO ()
 tests msg ts = do
