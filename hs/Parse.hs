@@ -71,24 +71,24 @@ grammar = do
 
 production :: Parser Production
 production = try shortProduction <|> longProduction
+  where
+    longProduction :: Parser Production
+    longProduction = do
+      l <- label
+      symbol hasTypeStr
+      ss <- sort `sepBy` (symbol typeProdStr)
+      symbol typeArrowStr
+      s <- iden
+      symbol terminalStr
+      return (Production (Constructor l ss) (SortN s))
 
-longProduction :: Parser Production
-longProduction = do
-  l <- label
-  symbol hasTypeStr
-  ss <- sort `sepBy` (symbol typeProdStr)
-  symbol typeArrowStr
-  s <- iden
-  symbol terminalStr
-  return (Production (Constructor l ss) (SortN s))
-
-shortProduction :: Parser Production
-shortProduction = do
-  l <- label
-  symbol hasTypeStr
-  s <- iden
-  symbol terminalStr
-  return (Production (Constructor l []) (SortN s))
+    shortProduction :: Parser Production
+    shortProduction = do
+      l <- label
+      symbol hasTypeStr
+      s <- iden
+      symbol terminalStr
+      return (Production (Constructor l []) (SortN s))
 
 
 sort :: Parser Sort

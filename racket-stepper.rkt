@@ -1,6 +1,7 @@
 (module racket-stepper racket
   (provide (all-defined-out))
   ;(provide test-eval profile-eval test-term expand unexpand)
+  (require "data.rkt")
   (require "utility.rkt")
   (require profile)
   
@@ -74,6 +75,7 @@
     (when DEBUG_STEPS (newline)))
   
   (define (emit x [id #f])
+;    (display (format "\n! ~a ~a\n" x (map (λ (frame) (show-sexpr (frame '__))) $stk)))
     (if id
         (let* [[name (Var-name x)]
                [term (value->term (Var-value x))]
@@ -219,10 +221,10 @@
          #'(list 'define (list 'f* 'vs* ...) x*))]
       
       ; (set! v x)
-      [(list 'set (? symbol? v_) x_)
+      [(list 'set! (? symbol? v_) x_)
        (with-syntax [[v* v_]
                      [x* (adorn x_)]]
-         #'(list 'set 'v* x*))]
+         #'(list 'set! 'v* x*))]
 
       ; (f xs ...)
       [(list f_ xs_ ...)
@@ -248,8 +250,8 @@
     (match term_
       
       [(Tagged os_ x_)
-       (with-syntax [[x* (adorn (Tagged os_ x_))]]
-         (annot/frame (annot/eval x_) #'(λ (__) x*)))]
+       (with-syntax [[(os* ...) os_]]
+         (annot/frame (annot/eval x_) #'(λ (__) (Tagged (list os* ...) __))))]
       
       ; (begin x)
       [(list 'begin x_)
@@ -313,11 +315,11 @@
                  xv*))))]
       |#
       ; (set! v x)
-      [(list 'set (? symbol? v_) x_)
+      [(list 'set! (? symbol? v_) x_)
        (with-syntax [[v* v_]
                      [(xv*) (generate-temporaries #'(x))]]
-         (with-syntax [[x* (annot/frame (annot/eval x_) #'(λ (__) (list 'set 'v* __)))]
-                       [term* #'(list 'set 'v* xv*)]]
+         (with-syntax [[x* (annot/frame (annot/eval x_) #'(λ (__) (list 'set! 'v* __)))]
+                       [term* #'(list 'set! 'v* xv*)]]
            #'(let [[xv* x*]]
                ($emit term*)
                (set! v* xv*))))]

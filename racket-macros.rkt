@@ -15,6 +15,10 @@
     [(Let [^ [^ x e] y ys ...] b)
      ((lambda (x) (! Let [^ y ys ...] b)) e)])
   
+  (define-macro LetBegin
+    [(Let [^ [^ x e]] b ...)
+     ((lambda (x) ) e)
+  
   (define-macro Let1
     [(Let1 v x y)
      (Let [^ [^ v x]] y)])
@@ -235,14 +239,15 @@
                (call/cc (λ (k) (string-append "outside "
                                   (k (string-append "in" "side")))))))
   
-  (set-show-continuations! #f)
+  (set-show-continuations! #t)
   
   (test-eval (+ 1 (+ 2 (+ 3 (call/cc (λ (k) (+ 4 (k (+ 5 6)) (+ 7 8)))) 9)) 10))
   (test-eval (+ 1 (call/cc (lambda (k) (+ 2 (call/cc (lambda (k2) (+ 3 (k 1729)))))))))
   (test-eval (Let [^ [^ k (call/cc (lambda (c) c))]] (+ 2 (k (λ (x) 3)))))
   (test-eval (+ 1 (call/cc (λ (k) (+ 2 (k 3))))))
   (test-eval (call/cc (λ (k) (k (+ (+ 1 2) (+ 3 4))))))
-  ;(test-eval ((call/cc call/cc) (call/cc call/cc))) -- loops
+  ;(test-eval ((call/cc call/cc) (call/cc call/cc))) ;-- loops
+  (test-eval ((call/cc call/cc) (λ (x) 3)))
   (test-eval (define x (+ 1 2)) x)
   (test-eval (define (f x) (g x))
              (display "ok\n")

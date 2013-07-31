@@ -6,6 +6,8 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import Control.Monad (liftM, liftM2, zipWithM, when)
 
+-- TODO: Pre-compute bodyWrap.
+
 
 newtype Var = Var String deriving (Eq, Ord)
 newtype Label = Label String deriving (Eq, Ord)
@@ -94,11 +96,22 @@ fvars (PRep ps p) = Set.union (Set.unions (map fvars ps)) (fvars p)
 fvars (PList ps) = Set.unions (map fvars ps)
 fvars (PTag _ p) = fvars p
 
+atomic :: Pattern -> Bool
+atomic (PVar _) = True
+atomic (PConst _) = True
+atomic (PNode l ps) = False
+atomic (PRep ps p) = and (map atomic ps) && atomic p
+atomic (PList ps) = and (map atomic ps)
+atomic (PTag _ p) = atomic p
+
 bodyWrap :: Pattern -> Pattern
 -- Enclose all of a pattern's subpatterns in MacBody tags.
 bodyWrap (PVar v) = PVar v
 bodyWrap (PConst c) = PConst c
-bodyWrap (PNode l ps) = PTag MacBody (PNode l (map bodyWrap ps))
+bodyWrap (PNode l ps) =
+  if and (map atomic ps)
+  then PNode l ps
+  else PTag MacBody (PNode l (map bodyWrap ps))
 bodyWrap (PRep ps p) = PRep (map bodyWrap ps) (bodyWrap p)
 bodyWrap (PList ps) = PList (map bodyWrap ps)
 bodyWrap (PTag o p) = PTag MacBody (skipTags (PTag o p))

@@ -3,24 +3,10 @@
   (require parser-tools/lex)
   (require ragg/support)
   (require (except-in rackunit fail))
+  (require racket/serialize)
+  (require "data.rkt")
   (require "utility.rkt")
   (require "grammar.rkt")
-
-  #| Tag ::= MacHead(macro-name, case-number, origin-term)
-             -- Marks root of macro-originating code.
-           | MacBody: Marks code that originated from a macro.
-           | Alien: Marks code that is not from here. |#
-  (struct MacHead (m c q) #:transparent)
-  (struct MacBody () #:transparent)
-  (struct Alien () #:transparent)
-  
-  #| Term ::= Node(Label, listof(Term))
-            | Tagged(listof(Tag), Term)
-            | Symbol
-            | Integer
-            | Float |#
-  (struct Node (label terms) #:transparent)
-  (struct List (terms) #:transparent)
   
   (define-setting DEBUG_COMMUNICATION set-debug-communication! #f)
   
@@ -59,29 +45,38 @@
     (match t
       [(Tagged os t)
        (string-append (show-term t) (origins->string os))]
-      [(? string? t)
-       (show-node 'Str (show-string t))]
-      [(? number? t)
-       (show-node 'Num (show-number t))]
-      [(? symbol? t)
-       (show-node 'Id (show-string (symbol->string t)))]
+      ; Surface
       [(list 'let (list bs ...) xs ...)
        (show-node 'Let (show-list (map show-binding bs))
                        (show-list (map show-term xs)))]
       [(list 'cond (list cs ...))
        (show-node 'Cond (show-list (map show-cond-case cs)))]
+      [(list 'inc x)
+       (show-node 'Inc (show-term x))]
+      [(list 'incinc x)
+       (show-node 'IncInc (show-term x))]
+      ; Core
+      [(? boolean? t)
+       (if t (show-node 'True) (show-node 'False))]
+      [(? number? t)
+       (show-node 'Num (show-number t))]
+      [(? string? t)
+       (show-node 'Str (show-string t))]
+      [(? symbol? t)
+       (show-node 'Id (show-string (symbol->string t)))]
+      [(list 'lambda (list (? symbol? vs) ...) xs ...)
+       (show-node 'Lambda (show-list (map show-symbol vs))
+                          (show-list (map show-term xs)))]
       [(list 'begin x xs ...)
        (show-node 'Begin (show-list (map show-term (cons x xs))))]
+      [(list 'set! (? symbol? v) x)
+       (show-node 'Set (show-symbol v) (show-term x))]
       [(list 'if x y z)
        (show-node 'If (show-term x) (show-term y) (show-term z))]
-      [(list 'lambda (list (? symbol? vs) ...) x)
-       (show-node 'Lambda (show-list (map show-symbol vs)) (show-term x))]
-      [(list 'set! (? symbol? v) x)
-       (show-node 'Set (symbol->string v) (show-term x))]
       [(list f xs ...)
        (show-node 'Apply (show-term f) (show-list (map show-term xs)))]
-      [val
-       val]))
+      ; Value
+      [t (show-node 'Value (show-string (format "~s" (serialize t))))]))
   
   
   #| PARSING |#
@@ -114,24 +109,36 @@
         [(Alien) (Alien)]))
     (define (convert t)
       (match t
-        [(Node 'Id (list x))
-         (string->symbol x)]
-        [(Node 'Str (list x))
-         x]
-        [(Node 'Num (list x))
-         (string->number x)]
+        ; Core
+        [(Node 'True (list)) #t]
+        [(Node 'False (list)) #f]
+        [(Node 'Num (list x)) (string->number x)]
+        [(Node 'Str (list x)) x]
+        [(Node 'Id (list x)) (string->symbol x)]
+        [(Node 'Lambda (list vs xs))
+         (cons 'lambda (cons (map string->symbol vs) (map convert xs)))]
+        [(Node 'Begin (list xs))
+         (cons 'begin (map convert xs))]
+        [(Node 'Set (list v x))
+         (list 'set! (string->symbol v) (convert x))]
+        [(Node 'If (list x y z))
+         (list 'if (convert x) (convert y) (convert z))]
         [(Node 'Apply (list f xs))
          (map convert (cons f xs))]
-        [(Node 'Lambda (list vs x))
-         (list 'lambda (map string->symbol vs) (convert x))]
+        ; Surface
         [(Node 'Binding (list v b))
          (list (string->symbol v) (convert b))]
         [(Node 'Let (list bs xs))
          (cons 'let (cons (map convert bs) (map convert xs)))]
-        [(Node 'Begin (list xs))
-         (cons 'begin (map convert xs))]
+        [(Node 'Inc (list x))
+         (list 'inc (convert x))]
+        [(Node 'IncInc (list x))
+         (list 'incinc (convert x))]
         [(Tagged os x)
          (Tagged (map convert-origin os) (convert x))]
+        ; Value
+        [(Node 'Value (list x))
+         (deserialize (read (open-input-string x)))]
         [_ (fail (format "Could not parse term: ~a" t))]))
     (let [[result
     (convert (ast->term (syntax->datum (parse (tokenize (open-input-string str))))))
@@ -186,28 +193,12 @@
   (test-conversion `(lambda (x y) (+ x y)))
   (test-conversion `(let [] 3))
   (test-conversion `(let [[x 1] [y 2]] (+ x y)))
+  (test-conversion `#t)
+  (test-conversion `(set! x 3))
 
   
   #| RESUGARING |#
   
   (define expand-term (make-parameter #f))
   (define unexpand-term (make-parameter #f))
-  
-  (define (send-command cmd out)
-    (when DEBUG_COMMUNICATION (display cmd))
-    (display cmd out)
-    (flush-output out))
-  
-  (define (receive-response in err)
-    (let [[response (read-line in)]]
-      (when DEBUG_COMMUNICATION (display response) (newline))
-      (cond [(eof-object? response)
-             (read-line err) (display (read-line err)) (newline)
-             (fail "Received EOF")]
-            [(strip-prefix "success: " response)
-             => (λ (t) (read-term t))]
-            [(strip-prefix "failure: " response)
-             => (λ (_) (CouldNotUnexpand))]
-            [(strip-prefix "error: " response)
-             => (λ (msg) (fail msg))])))
 )

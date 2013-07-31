@@ -1,4 +1,4 @@
-module Show (rulesStr, surfaceStr, coreStr, startStr, constrStr,
+module Show (rulesStr, surfaceStr, coreStr, startStr, valueStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr,
              hasTypeStr, typeProdStr, typeArrowStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
@@ -13,6 +13,7 @@ import Grammar
 surfaceStr = "surface"
 coreStr = "core"
 startStr = "start"
+valueStr = "values"
 constrStr = "constructors"
 rulesStr = "rules"
 

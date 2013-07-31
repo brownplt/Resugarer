@@ -1,11 +1,7 @@
 (module utility racket
   (provide (all-defined-out))
   
-    (define-syntax-rule (thunk x) (λ () x))
-  
-  ; Common data structures
-  (struct Tagged (tags term) #:transparent)
-  (struct CouldNotUnexpand ())
+  (define-syntax-rule (thunk x) (λ () x))
   
   (define id (λ (x) x))
   
