@@ -1,6 +1,6 @@
 module Show (rulesStr, surfaceStr, coreStr, startStr, valueStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr,
-             hasTypeStr, typeProdStr, typeArrowStr,
+             hasTypeStr, typeProdStr, typeArrowStr, transpStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
              macBodyStr, macAlienStr, macHeadStr, tagStr) where
 
@@ -25,6 +25,7 @@ hasTypeStr = ":"
 typeProdStr = "*"
 typeArrowStr = "->"
 repStr = "..."
+transpStr = "!"
 
 macBodyStr = "Body"
 macHeadStr = "Head"

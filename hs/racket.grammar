@@ -37,4 +37,4 @@ rules
   Let([Binding(v, b)], [x ...]) ->
     Apply(Lambda([v], [x ...]), [b]);
   Let([Binding(v, b), bs ...], x) ->
-    Apply(Lambda([v], Let([bs ...], x)), [b]);
+    Apply(Lambda([v], [!Let([bs ...], x)]), [b]);

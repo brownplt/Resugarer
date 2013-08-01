@@ -195,7 +195,7 @@ main = do
   quickCheck (prop_parse const)
   quickCheck (prop_parse origin)
   quickCheck (prop_parse term)
-  quickCheck (prop_parse pattern)
+  quickCheck (prop_parse (pattern False))
   quickCheck (prop_parse grammar)
   quickCheck (prop_parse rule)
   quickCheck (prop_parse language)

@@ -5,6 +5,7 @@ import Prelude hiding (const)
 import Text.ParserCombinators.Parsec hiding (label)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Control.Monad (liftM, liftM2, liftM3)
+import Data.Maybe (maybe)
 
 import Pattern
 import Grammar
@@ -108,14 +109,14 @@ rules = do
 
 rule :: Parser Rule
 rule = do
-  p <- pattern
+  p <- pattern False
   symbol rewriteStr
-  q <- pattern
+  q <- pattern True
   symbol terminalStr
   return (Rule p q)
 
-pattern :: Parser Pattern
-pattern = do
+pattern :: Bool -> Parser Pattern
+pattern z = do
   p <- untaggedPattern
   ts <- optionMaybe tags
   case ts of
@@ -129,13 +130,16 @@ pattern = do
         pConst = liftM PConst const
         pList = brackets pListElems
         pNode = do
-          l <- label
-          args <- optionMaybe (parens (commaSep pattern))
-          case args of
-            Nothing -> return (PNode l [])
-            Just args -> return (PNode l args)
+          z' <- optionMaybe (symbol transpStr)
+          case z' of
+            Just _ -> pattern (not z)
+            Nothing -> do
+              l <- label
+              args <- optionMaybe (parens (commaSep (pattern z)))
+              let nodeArgs = maybe [] id args
+              return (PNode l nodeArgs)
         pListElems = do
-          xs <- commaSep pattern
+          xs <- commaSep (pattern z)
           r <- optionMaybe (symbol repStr)
           case r of
             Nothing -> return (PList xs)

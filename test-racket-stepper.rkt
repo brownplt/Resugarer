@@ -95,4 +95,6 @@
   (test-eval (begin (+ 1 2) (+ 2 3) (+ 3 4)))
   (test-eval (let [[x 1]] (+ 1 2)))
   (test-eval (let [[x (+ 1 2)]] (+ x 3)))
+  (test-eval (let [[x 1] [y 2]] 3))
+  (test-eval (let [[x (+ 1 2)] [y (+ 3 4)]] (+ x y)))
 )
