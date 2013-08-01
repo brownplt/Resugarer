@@ -168,7 +168,7 @@
   (define (annot/extern-call func_ args_)
     (with-syntax [[func* func_]
                   [(args* ...) args_]]
-      (annot/frame #'(func* args* ...) (list (Alien)) #'__)))
+      (annot/frame #'(func* args* ...) (list (Alien)) #'(list __))))
   
   ; Call a function, which may have been annotated or not.
   (define (annot/call func_ args_)

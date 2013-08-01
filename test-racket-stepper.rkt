@@ -80,8 +80,7 @@
   (test-eval (lambda (x) x))
   (test-eval ((lambda (x) (+ x 1)) 3))
   (test-eval (((lambda (f) (lambda (x) (f (f x)))) (lambda (x) (+ x 1))) (+ 2 3)))
-  ; TODO: Fix bug:
-  ;(test-eval (+ 1 (my-external-function (lambda (x) (+ x 1)))))
+  (test-eval (+ 1 (my-external-function (lambda (x) (+ x 1)))))
   (test-eval (cons 3 7))
   (test-eval (+ 0 (car (cons (+ 1 2) (+ 3 4)))))
   (test-eval (+ 1 (begin (begin (+ 1 2)))))
