@@ -15,10 +15,6 @@
     [(Let [^ [^ x e] y ys ...] b)
      ((lambda (x) (! Let [^ y ys ...] b)) e)])
   
-  (define-macro LetBegin
-    [(Let [^ [^ x e]] b ...)
-     ((lambda (x) ) e)
-  
   (define-macro Let1
     [(Let1 v x y)
      (Let [^ [^ v x]] y)])
