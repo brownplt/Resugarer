@@ -1,40 +1,67 @@
 core
-  start Expr
-  constructors
-    Value : String -> Expr;
-    True : Expr;
-    False : Expr;
-    Num : String -> Expr;
-    Str : String -> Expr;
-    Id : String -> Expr;
-    Lambda : [String] * [Expr] -> Expr;
-    Begin : [Expr] -> Expr;
-    Set : String * Expr -> Expr;
-    If : Expr * Expr * Expr -> Expr;
-    Apply : Expr * [Expr] -> Expr;
-surface
-  start Expr
-  constructors
-    Value : String -> Expr;
-    True : Expr;
-    False : Expr;
-    Num : String -> Expr;
-    Str : String -> Expr;
-    Id : String -> Expr;
-    Lambda : [String] * [Expr] -> Expr;
-    Begin : [Expr] -> Expr;
-    Set : String * Expr -> Expr;
-    If : Expr * Expr * Expr -> Expr;
-    Apply : Expr * [Expr] -> Expr;
 
- 	Inc : Expr -> Expr;
-    IncInc : Expr -> Expr;
-    Binding : String * Expr -> Binding;
-    Let : [Binding] * [Expr] -> Expr;
+  start CExpr
+
+  values
+    Value : String -> CExpr;
+    True : CExpr;
+    False : CExpr;
+    Num : String -> CExpr;
+    Str : String -> CExpr;
+    Id : String -> CExpr;
+
+  constructors
+    Lambda : [String] * [CExpr] -> CExpr;
+    Begin : [CExpr] -> CExpr;
+    Set : String * CExpr -> CExpr;
+    If : CExpr * CExpr * CExpr -> CExpr;
+    Apply : CExpr * [CExpr] -> CExpr;
+
+
+surface
+
+  start SExpr
+
+  values
+    Value : String -> SExpr;
+    True : SExpr;
+    False : SExpr;
+    Num : String -> SExpr;
+    Str : String -> SExpr;
+    Id : String -> SExpr;
+
+    Binding : String * SExpr -> Binding;    
+	CondCase : SExpr * SExpr -> CondCase;
+	Else : SExpr -> CondCase;
+
+    Delay : SExpr -> SExpr;
+
+  constructors
+    Lambda : [String] * [SExpr] -> SExpr;
+    Begin : [SExpr] -> SExpr;
+    Set : String * SExpr -> SExpr;
+    If : SExpr * SExpr * SExpr -> SExpr;
+    Apply : SExpr * [SExpr] -> SExpr;
+
+ 	Inc : SExpr -> SExpr;
+    Let : [Binding] * [SExpr] -> SExpr;
+    Cond : [CondCase] -> SExpr;
+    Or : [SExpr] -> SExpr;
+
+
 rules
-  Inc(x) -> Apply(Id("+"), [x, Apply(Id("+"), [Num("0"), Num("1")])]);
-  IncInc(x) -> Inc(x);
+
+  Delay(x) -> Apply(Lambda([], [x]), []);
+
+  Inc(x) -> Apply(Id("+"), [x, Num("1")]);
   Let([Binding(v, b)], [x ...]) ->
     Apply(Lambda([v], [x ...]), [b]);
   Let([Binding(v, b), bs ...], x) ->
     Apply(Lambda([v], [!Let([bs ...], x)]), [b]);
+  Cond([]) -> Apply(Id("void"), []);
+  Cond([Else(x)]) -> x;
+  Cond([CondCase(x, y), cs ...]) ->
+    If(x, y, !Cond([cs ...]));
+  Or([x]) -> Delay(x);
+  Or([x, xs ...]) ->
+    Let([Binding("t", x)], [If(Id("t"), Id("t"), !Or([xs ...]))]);

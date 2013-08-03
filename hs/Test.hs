@@ -41,7 +41,10 @@ instance Arbitrary ConstructorTable where
   arbitrary = liftM grammarToConstructorTable arbitrary
 
 instance Arbitrary Language where
-  arbitrary = liftM (flip Language (SortN "Expr")) arbitrary
+  arbitrary = do
+    g1 <- arbitrary
+    g2 <- arbitrary
+    return (Language g1 g2 (SortN "Expr"))
 
 instance Arbitrary Module where
   arbitrary = liftM3 Module arbitrary arbitrary arbitrary
@@ -78,11 +81,14 @@ instance Arbitrary Pattern where
     else oneof [liftM PVar arbitrary,
                 liftM PVar arbitrary,
                 liftM PConst arbitrary,
-                liftM2 PNode (smaller arbitrary) (smaller arbitrary),
-                liftM2 PNode (smaller arbitrary) (smaller arbitrary),
+                liftM3 PNode arbitrary (smaller arbitrary) (smaller arbitrary),
+                liftM3 PNode arbitrary (smaller arbitrary) (smaller arbitrary),
                 liftM PList (smaller arbitrary),
                 liftM2 PRep (smaller arbitrary) (smaller arbitrary),
                 liftM2 PTag arbitrary (smaller arbitrary)]
+
+instance Arbitrary Info where
+  arbitrary = liftM2 Info arbitrary arbitrary
 
 termGen :: Gen Term
 termGen = arbitrary
@@ -165,7 +171,7 @@ main = do
     (subsTest (TConst (CInt 1))
               (PVar (Var "x"))),
     (subsTest (TNode (Label "l") [TConst (CInt 1)])
-              (PNode (Label "l") [PVar (Var "y")])),
+              (PNode (Info False False) (Label "l") [PVar (Var "y")])),
     (subsTest (TList [])
               (PList [])),
     (subsTest (TList [TConst (CStr "one")])
@@ -189,13 +195,14 @@ main = do
 --  sample (arbitrary :: Gen Rules)
 --  sample (arbitrary :: Gen Pattern)
 --  sample (arbitrary :: Gen Module)
+
   putStrLn "\nTesting parsing..."
   quickCheck (prop_parse label)
   quickCheck (prop_parse sort)
   quickCheck (prop_parse const)
   quickCheck (prop_parse origin)
   quickCheck (prop_parse term)
-  quickCheck (prop_parse (pattern False))
+  quickCheck (prop_parse pattern)
   quickCheck (prop_parse grammar)
   quickCheck (prop_parse rule)
   quickCheck (prop_parse language)

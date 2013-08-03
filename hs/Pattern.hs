@@ -18,10 +18,12 @@ data Macro = Macro Label [Rule]
 
 data Rule = Rule Pattern Pattern deriving (Eq)
 
+data Info = Info Bool Bool -- transp marked, always transparent
+
 data Pattern =
     PVar Var
   | PConst Const
-  | PNode Label [Pattern]
+  | PNode Info Label [Pattern]
   | PRep [Pattern] Pattern
   | PList [Pattern]
   | PTag Origin Pattern
@@ -44,6 +46,9 @@ data Const =
   | CDbl Double
   | CStr String
     deriving (Eq, Ord)
+
+instance Eq Info where
+  (==) = const (const True)
 
 instance Eq Origin where
   MacBody == MacBody = True
@@ -91,33 +96,32 @@ varName (Var name) = name
 fvars :: Pattern -> Set Var
 fvars (PVar v) = Set.singleton v
 fvars (PConst _) = Set.empty
-fvars (PNode _ ps) = Set.unions (map fvars ps)
+fvars (PNode _ _ ps) = Set.unions (map fvars ps)
 fvars (PRep ps p) = Set.union (Set.unions (map fvars ps)) (fvars p)
 fvars (PList ps) = Set.unions (map fvars ps)
 fvars (PTag _ p) = fvars p
 
-atomic :: Pattern -> Bool
-atomic (PVar _) = True
-atomic (PConst _) = True
-atomic (PNode l ps) = False
-atomic (PRep ps p) = and (map atomic ps) && atomic p
-atomic (PList ps) = and (map atomic ps)
-atomic (PTag _ p) = atomic p
-
-bodyWrap :: Pattern -> Pattern
+bodyWrap :: Bool -> Pattern -> Pattern
 -- Enclose all of a pattern's subpatterns in MacBody tags.
-bodyWrap (PVar v) = PVar v
-bodyWrap (PConst c) = PConst c
-bodyWrap (PNode l ps) =
-  if and (map atomic ps)
-  then PNode l ps
-  else PTag MacBody (PNode l (map bodyWrap ps))
-bodyWrap (PRep ps p) = PRep (map bodyWrap ps) (bodyWrap p)
-bodyWrap (PList ps) = PList (map bodyWrap ps)
-bodyWrap (PTag o p) = PTag MacBody (skipTags (PTag o p))
+bodyWrap z p = wrap p
   where
-    skipTags (PTag o p) = PTag o (skipTags p)
-    skipTags p = bodyWrap p
+    wrap :: Pattern -> Pattern
+    wrap (PVar v) = PVar v
+    wrap (PConst c) = PConst c
+    wrap (PNode i@(Info z' v) l ps) =
+      if z'
+      then opacify (not z) (PNode i l (map (bodyWrap (not z)) ps))
+      else opacify z (PNode i l (map wrap ps))
+    wrap (PRep ps p) = PRep (map wrap ps) (wrap p)
+    wrap (PList ps) = PList (map wrap ps)
+    wrap (PTag o p) = opacify z (skipTags (PTag o p))
+      where
+        skipTags (PTag o p) = PTag o (skipTags p)
+        skipTags p = wrap p
+    
+    opacify :: Bool -> Pattern -> Pattern
+    opacify z n@(PNode (Info _ True) _ _) = n -- never, ever tag these nodes
+    opacify z p = if z then PTag MacBody p else p
 
 
 {- Matching -}
@@ -126,7 +130,7 @@ match :: Term -> Pattern -> Either ResugarFailure Env
 match (TConst c)   (PConst c')    | c == c' = return mtEnv
 match t            (PVar v)                 = return (singletonEnv v t)
 match (TTag o t)   (PTag o' p)    | o == o' = match t p
-match (TNode l ts) (PNode l' ps)  | l == l' = matchNode l ts ps
+match (TNode l ts) (PNode i l' ps)| l == l' = matchNode i l ts ps
 match (TList ts)   (PList ps)     | length ts == length ps =
   liftM Map.unions (zipWithM match ts ps)
 match (TList ts)   (PRep ps p)    | length ts >= length ps = do
@@ -135,10 +139,10 @@ match (TList ts)   (PRep ps p)    | length ts >= length ps = do
   return (unifyEnv e1 e2)
 match t            p                        = Left (MatchFailure t p)
 
-matchNode :: Label -> [Term] -> [Pattern] -> Either ResugarFailure Env
-matchNode _ [] [] = return mtEnv
-matchNode l (t:ts) (p:ps) = liftM2 unifyEnv (match t p) (matchNode l ts ps)
-matchNode l ts ps = Left (MatchFailure (TNode l ts) (PNode l ps))
+matchNode :: Info -> Label -> [Term] -> [Pattern] -> Either ResugarFailure Env
+matchNode _ _ [] [] = return mtEnv
+matchNode i l (t:ts) (p:ps) = liftM2 unifyEnv (match t p) (matchNode i l ts ps)
+matchNode i l ts ps = Left (MatchFailure (TNode l ts) (PNode i l ps))
 
 matchList :: [Term] -> Pattern -> Either ResugarFailure Env
 matchList []     p = return $ Map.fromList $
@@ -162,11 +166,11 @@ subs e (PVar v) = case Map.lookup v e of
   Nothing -> Left (ResugarError (UnboundSubsVar v))
   Just (BTerm t) -> return t
   Just (BList _) -> Left (ResugarError (DepthMismatch v))
-subs e (PConst c)    = return (TConst c)
-subs e (PNode l ps)  = liftM (TNode l) (mapM (subs e) ps)
-subs e (PList ps)    = liftM TList (mapM (subs e) ps)
-subs e (PRep ps p)   = liftM TList (liftM2 (++) (mapM (subs e) ps) (subsList e p))
-subs e (PTag o p)    = liftM (TTag o) (subs e p)
+subs e (PConst c)     = return (TConst c)
+subs e (PNode _ l ps) = liftM (TNode l) (mapM (subs e) ps)
+subs e (PList ps)     = liftM TList (mapM (subs e) ps)
+subs e (PRep ps p)    = liftM TList (liftM2 (++) (mapM (subs e) ps) (subsList e p))
+subs e (PTag o p)     = liftM (TTag o) (subs e p)
 
 subsList e p = do
   es <- splitEnv e (Set.toList (fvars p))
@@ -204,8 +208,8 @@ unify (PVar v)     p                           = return p
 unify p            (PVar v)                    = return p
 unify (PTag o p)   (PTag o' p')      | o == o' = liftM (PTag o) (unify p p')
 unify (PRep ps p)  (PRep ps' p')              = undefined
-unify (PNode l ps) (PNode l' ps')    | l == l' && length ps == length ps'
-  = liftM (PNode l) (zipWithM unify ps ps')
+unify (PNode i l ps) (PNode _ l' ps')    | l == l' && length ps == length ps'
+  = liftM (PNode i l) (zipWithM unify ps ps')
 unify p q = Left (UnifyFailure p q)
 
 subsumed :: Pattern -> Pattern -> Bool
@@ -213,7 +217,7 @@ subsumed _            (PVar _)                 = True
 subsumed (PConst c)   (PConst c')    | c == c' = True
 subsumed (PTag o p)   (PTag o' p')   | o == o' = subsumed p p'
 subsumed (PRep ps p)  (PRep ps' p')            = undefined
-subsumed (PNode l ps) (PNode l' ps') | l == l' && length ps == length ps'
+subsumed (PNode _ l ps) (PNode _ l' ps') | l == l' && length ps == length ps'
   = and (zipWith subsumed ps ps')
 subsumed _            _                        = False
 
@@ -227,8 +231,8 @@ expandMacro (Macro name cs) t = expandCases 0 cs
     expandCases i (c:cs) = eitherOr (expandCase i c) (expandCases (i + 1) cs)
     
     expandCase i (Rule p p') = do
-      e <- match t p
-      t <- subs e (bodyWrap p')
+      e <- match t (bodyWrap False p)
+      t <- subs e (bodyWrap True p')
       return (i, t)
 
 unexpandMacro :: Macro -> (Int, Term) -> Term -> Either ResugarFailure Term
@@ -238,8 +242,8 @@ unexpandMacro (Macro l cs) (i, t') t =
   else unexpandCase (cs !! i)
     where
       unexpandCase (Rule p p') = do
-        e <- match t p
-        e' <- match t' (bodyWrap p')
+        e <- match t (bodyWrap False p)
+        e' <- match t' (bodyWrap True p')
         subs (composeEnvs e e') p
 
 
@@ -269,7 +273,7 @@ wellFormedPattern :: Label -> Pattern -> Either WFError ()
 wellFormedPattern _ (PVar _) = return ()
 wellFormedPattern _ (PConst _) = return ()
 wellFormedPattern l (PTag _ p) = wellFormedPattern l p
-wellFormedPattern l (PNode _ ps) = mapM_ (wellFormedPattern l) ps
+wellFormedPattern l (PNode _ _ ps) = mapM_ (wellFormedPattern l) ps
 wellFormedPattern l (PList ps) = mapM_ (wellFormedPattern l) ps
 wellFormedPattern l (PRep ps p) = do
   mapM_ (wellFormedPattern l) ps

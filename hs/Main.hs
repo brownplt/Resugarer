@@ -38,7 +38,7 @@ readTerm str (g, s) = do
     Right t -> if termConforms g (SortName s) t
                then return (Just t)
                else do
-                 problem "nonconformant term!"
+                 problem ("nonconformant term! " ++ str)
                  return Nothing
 
 showResult (Left (ResugarError err)) = problem (show err)
@@ -71,11 +71,11 @@ main = do
   case parseModule filename src of
     Left err -> do
       problem ("Parse error in module: " ++ show err)
-    Right (Module (Language g1 s1) (Language g2 s2) rs) -> do
+    Right m@(Module (Language (Grammar v1) (Grammar g1) s1)
+                  (Language (Grammar v2) (Grammar g2) s2) rs) -> do
       hPutStr stderr "Checking your desugaring for completeness... "
       -- TODO: Implement completeness check.
       hPutStrLn stderr "Well, I'm sure it'll be fine."
       mainLoop (rulesToMacros rs)
-               (grammarToConstructorTable g1, s1)
-               (grammarToConstructorTable g2, s2)
-
+               (grammarToConstructorTable (Grammar (v1 ++ g1)), s1)
+               (grammarToConstructorTable (Grammar (v2 ++ g2)), s2)

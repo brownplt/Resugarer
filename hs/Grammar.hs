@@ -26,7 +26,7 @@ data Constructor = Constructor Label [Sort]
 data Rules = Rules [Rule]
            deriving (Eq)
 
-data Language = Language Grammar SortName
+data Language = Language Grammar Grammar SortName
               deriving (Eq)
 
 data Module = Module Language Language Rules
@@ -42,7 +42,7 @@ rulesToMacros :: Rules -> MacroTable
 rulesToMacros (Rules rs) = f (reverse rs) Map.empty
   where
     f [] ms = ms
-    f (c@(Rule (PNode l _) _) : rs) ms =
+    f (c@(Rule (PNode _ l _) _) : rs) ms =
       let ms' = case Map.lookup l ms of
             Nothing ->
               Map.insert l (Macro l [c]) ms

@@ -55,18 +55,25 @@
   
   (define (term->sexpr t [keep-tags #t])
     (match t
-      [(term-list os ts)
+      [(TermList os ts)
        (if (and keep-tags (not (empty? os)))
            (Tagged os (map term->sexpr ts))
            (map term->sexpr ts))]
+      [(TermAtom os t)
+       (if (and keep-tags (not (empty? os)))
+           (Tagged os (term->sexpr t))
+           (term->sexpr t))]
       [t t]))
   
   (define (sexpr->term x)
     (match x
-      [(Tagged os xs)
-       (term-list os (map sexpr->term xs))]
+      [(Tagged os x)
+       (if (list? x)
+           (TermList os (map sexpr->term x))
+           (TermAtom os (sexpr->term x)))]
+;       (TermList os (list (sexpr->term x)))]
       [(list xs ...)
-       (term-list (list) (map sexpr->term xs))]
+       (TermList (list) (map sexpr->term xs))]
       [x x]))
   
   (define (pretty-term t [keep-tags #f])
@@ -100,20 +107,20 @@
   (define (value->term x)
     (cond [(Func? x)
            (value->term (Func-term x))]
-          [(term-list? x)
-           (term-list (term-list-tags x) (map value->term (term-list-terms x)))]
+          [(TermList? x)
+           (TermList (TermList-tags x) (map value->term (TermList-terms x)))]
           [(Var? x)
            (let* [[name (Var-name x)]
                   [term (value->term (Var-value x))]
                   [u    ((unexpand) (term->sexpr term))]]
              (if DEBUG_VARS
-                 (term-list (list) (list name ':= term))
+                 (TermList (list) (list name ':= term))
                  (if (or (and HIDE_UNDEFINED (undefined? u))
                          (CouldNotUnexpand? u))
                      name u)))]
           [(Cont? x)
            (let [[stk (value->term (reconstruct-stack '__ (Cont-stk x)))]]
-             (term-list (list) (list '*cont* stk)))]
+             (TermList (list) (list '*cont* stk)))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (or (object-name x) 'cont)]
           [else
@@ -147,12 +154,12 @@
   (define (make-frame os_ body_)
     (with-syntax [[(os* ...) os_]
                   [body* body_]]
-      #'(λ (__) (term-list (list os* ...) body*))))
+      #'(λ (__) (TermList (list os* ...) body*))))
   
   (define (annot/term os_ term_)
     (with-syntax [[(os* ...) os_]
                   [term* term_]]
-      #'(term-list (list os* ...) term*)))
+      #'(TermList (list os* ...) term*)))
   
   ; Annotate function argument expressions
   (define (annot/args xs_ os_ fv_ xvs0_ xvs_ xts_)
@@ -187,31 +194,36 @@
   (define (adorn term_)
     (match term_
       
+      [(TermAtom os_ x_)
+       (with-syntax [[(os* ...) os_]
+                     [x* x_]]
+         #'(TermAtom (list os* ...) x*))]
+      
       ; (begin x)
-      [(term-list os_ (list 'begin x_))
+      [(TermList os_ (list 'begin x_))
        (with-syntax [[x* (adorn x_)]]
          (annot/term os_ #'(list 'begin x*)))]
       
       ; (begin x y ys ...)
-      [(term-list os_ (list 'begin x_ y_ ys_ ...))
+      [(TermList os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[x* (adorn x_)]
                      [y* (adorn y_)]
                      [(ys* ...) (map adorn ys_)]]
          (annot/term os_ #'(list 'begin x* y* ys* ...)))]
       
       ; (if x y z)
-      [(term-list os_ (list 'if x_ y_ z_))
+      [(TermList os_ (list 'if x_ y_ z_))
        (with-syntax [[x* (adorn x_)]
                      [y* (adorn y_)]
                      [z* (adorn z_)]]
          (annot/term os_ #'(list 'if x* y* z*)))]
       
       ; (λ (v ...) x)
-      [(term-list os_ (cons 'λ rest))
-       (adorn (term-list os_ (cons 'lambda rest)))]
+      [(TermList os_ (cons 'λ rest))
+       (adorn (TermList os_ (cons 'lambda rest)))]
       
       ; (lambda (v ...) x)
-      [(term-list os_ (list 'lambda (term-list os2_ (list (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'lambda (TermList os2_ (list (? symbol? vs_) ...)) x_))
        (with-syntax [[(vs* ...) vs_]
                      [x* (adorn x_)]]
          (with-syntax [[args* (annot/term os2_ #'(list vs* ...))]]
@@ -220,13 +232,13 @@
                  lambda*))))]
       
       ; (define v x)
-      [(term-list os_ (list 'define (? symbol? v_) x_))
+      [(TermList os_ (list 'define (? symbol? v_) x_))
        (with-syntax [[v* v_]
                      [x* (adorn x_)]]
          (annot/term os_ #'(list 'define 'v* x*)))]
       
       ; (define (f v ...) x)
-      [(term-list os_ (list 'define (term-list os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'define (TermList os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
        (with-syntax [[f* f_]
                      [(vs* ...) vs_]
                      [x* (adorn x_)]]
@@ -234,13 +246,13 @@
            (annot/term os_ #'(list 'define decl* x*))))]
       
       ; (set! v x)
-      [(term-list os_ (list 'set! (? symbol? v_) x_))
+      [(TermList os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[v* v_]
                      [x* (adorn x_)]]
          (annot/term os_ #'(list 'set! 'v* x*)))]
 
       ; (f xs ...)
-      [(term-list os_ (list f_ xs_ ...))
+      [(TermList os_ (list f_ xs_ ...))
        (with-syntax [[f* (adorn f_)]
                      [(xs* ...) (map adorn xs_)]]
          (annot/term os_ #'(list f* xs* ...)))]
@@ -264,23 +276,27 @@
   (define (annot/eval term_)
     (match term_
       
+      [(TermAtom os_ x_)
+       (with-syntax [[x* (adorn x_)]]
+         (annot/frame (annot/eval x_) os_ #'(list x*)))]
+      
       ; (begin x)
-      [(term-list os_ (list 'begin x_))
+      [(TermList os_ (list 'begin x_))
        (annot/eval x_)]
       
       ; (begin x y ys ...)
-      [(term-list os_ (list 'begin x_ y_ ys_ ...))
+      [(TermList os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[(yts* ...) (map adorn (cons y_ ys_))]
                      [(xv*) (generate-temporaries #'(x))]]
          (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'begin __ yts* ...))]
-                       [ys* (annot/eval (term-list os_ (cons 'begin (cons y_ ys_))))]
+                       [ys* (annot/eval (TermList os_ (cons 'begin (cons y_ ys_))))]
                        [term* (annot/term os_ #'(list 'begin xv* yts* ...))]]
            #'(let [[xv* x*]]
                ($emit term*)
                ys*)))]
       
       ; (if x y z)
-      [(term-list os_ (list 'if x_ y_ z_))
+      [(TermList os_ (list 'if x_ y_ z_))
        (with-syntax [[yt* (adorn y_)]
                      [zt* (adorn z_)]
                      [y* (annot/eval y_)]
@@ -293,11 +309,11 @@
                (if xv* y* z*))))]
       
       ; (lambda (v) x)
-      [(term-list os_ (cons 'lambda rest))
-       (annot/eval (term-list os_ (cons 'λ rest)))]
+      [(TermList os_ (cons 'lambda rest))
+       (annot/eval (TermList os_ (cons 'λ rest)))]
       
       ; (λ (v ...) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'λ (TermList os2_ (list (? symbol? vs_) ...)) x_))
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [(vs* ...) vs_]]
          (with-syntax [[body* (annot/eval x_)]
@@ -305,11 +321,11 @@
            #'(Func (λ (vs* ...) body*) term*)))]
       
       ; (define (f v ...) x)
-      [(term-list os_ (list 'define (term-list os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'define (TermList os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
        (with-syntax [[f* f_]
                      [(vs* ...) vs_]
                      [xt* (adorn/close x_ vs_)]
-                     [x* (annot/eval (term-list os_ (list 'λ (term-list os2_ vs_) x_)))]
+                     [x* (annot/eval (TermList os_ (list 'λ (TermList os2_ vs_) x_)))]
                      [(xv*) (generate-temporaries #'(x))]]
          (with-syntax [[decl* (annot/term os2_ #'(list 'f* 'vs* ...))]]
            (with-syntax [[term* (annot/term os_ #'(list 'define decl* xt*))]]
@@ -319,7 +335,7 @@
                    xv*)))))]
 
       ; (define v x)
-      [(term-list os_ (list 'define (? symbol? v_) x_))
+      [(TermList os_ (list 'define (? symbol? v_) x_))
        (with-syntax [[(xv*) (generate-temporaries #'(x))]
                      [v* v_]]
          (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'define 'v* __))]
@@ -330,7 +346,7 @@
                  xv*))))]
       
       ; (set! v x)
-      [(term-list os_ (list 'set! (? symbol? v_) x_))
+      [(TermList os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[v* v_]
                      [(xv*) (generate-temporaries #'(x))]]
          (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'set! 'v* __))]
@@ -340,7 +356,7 @@
                (set! v* xv*))))]
 
       ; (f xs ...)
-      [(term-list os_ (list f_ xs_ ...))
+      [(TermList os_ (list f_ xs_ ...))
        (let [[xvs_ (map (λ (_) (with-syntax [[(v) (generate-temporaries #'(x))]] #'v)) xs_)]]
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [(xvs* ...) xvs_]

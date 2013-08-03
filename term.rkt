@@ -40,21 +40,26 @@
       (match b [(list v x)
                 (show-node 'Binding (show-symbol v) (show-term x))]))
     (define (show-cond-case c)
-      (match c [(list c x)
-                (show-node 'CondCase (show-term c) (show-term x))]))
+      (match c
+        [(list 'else x)
+         (show-node 'Else (show-term x))]
+        [(list c x)
+         (show-node 'CondCase (show-term c) (show-term x))]))
     (match t
       [(Tagged os t)
        (string-append (show-term t) (origins->string os))]
+      [(list 'delay x)
+       (show-node 'Delay (show-term x))]
       ; Surface
       [(list 'let (list bs ...) xs ...)
        (show-node 'Let (show-list (map show-binding bs))
                        (show-list (map show-term xs)))]
-      [(list 'cond (list cs ...))
+      [(list 'cond cs ...)
        (show-node 'Cond (show-list (map show-cond-case cs)))]
       [(list 'inc x)
        (show-node 'Inc (show-term x))]
-      [(list 'incinc x)
-       (show-node 'IncInc (show-term x))]
+      [(list 'or xs ...)
+       (show-node 'Or (show-list (map show-term xs)))]
       ; Core
       [(? boolean? t)
        (if t (show-node 'True) (show-node 'False))]
@@ -109,6 +114,10 @@
         [(Alien) (Alien)]))
     (define (convert t)
       (match t
+        [(Tagged os x)
+         (Tagged (map convert-origin os) (convert x))]
+        [(Node 'Delay (list x))
+         (list 'delay (convert x))]
         ; Core
         [(Node 'True (list)) #t]
         [(Node 'False (list)) #f]
@@ -130,12 +139,16 @@
          (list (string->symbol v) (convert b))]
         [(Node 'Let (list bs xs))
          (cons 'let (cons (map convert bs) (map convert xs)))]
+        [(Node 'Else (list x))
+         (list (convert x))]
+        [(Node 'CondCase (list c x))
+         (list (convert c) (convert x))]
+        [(Node 'Cond (list xs))
+         (cons 'cond (map convert xs))]
         [(Node 'Inc (list x))
          (list 'inc (convert x))]
-        [(Node 'IncInc (list x))
-         (list 'incinc (convert x))]
-        [(Tagged os x)
-         (Tagged (map convert-origin os) (convert x))]
+        [(Node 'Or (list xs))
+         (cons 'or (map convert xs))]
         ; Value
         [(Node 'Value (list x))
          (deserialize (read (open-input-string x)))]
@@ -190,11 +203,15 @@
                            `(+ (- x) 3)))
   (test-conversion (Tagged (list (MacHead 'Macro 2 `(+ x 1)))
                            `(+ x y)))
+
   (test-conversion `(lambda (x y) (+ x y)))
   (test-conversion `(let [] 3))
   (test-conversion `(let [[x 1] [y 2]] (+ x y)))
   (test-conversion `#t)
   (test-conversion `(set! x 3))
+  (test-conversion '(cond [1 2] [3 4]))
+  (test-conversion '(or 1 2 3))
+  (test-conversion `(delay 1))
 
   
   #| RESUGARING |#

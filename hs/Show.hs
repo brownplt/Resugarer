@@ -69,8 +69,12 @@ instance Show Pattern where
       showTags os (PTag o p) = showTags (o:os) p
       showTags os p          =
         shows p . braces (brackets (commaSep (map shows os)))
-  showsPrec _ (PNode l []) = shows l
-  showsPrec _ (PNode l ps) = shows l . parens (commaSep (map shows ps))
+  showsPrec _ (PNode (Info z _) l []) = showTransp z . shows l
+  showsPrec _ (PNode (Info z _) l ps) =
+    showTransp z . shows l . parens (commaSep (map shows ps))
+
+showTransp False = id
+showTransp True = str transpStr
 
 instance Show Term where
   showsPrec _ (TConst c) = shows c
@@ -136,8 +140,10 @@ instance Show Rules where
     newlineSep (str rulesStr : map shows rs)
 
 instance Show Language where
-  showsPrec _ (Language g s) =
-    newlineSep [str startStr, shows s, str constrStr, shows g]
+  showsPrec _ (Language g1 g2 s) =
+    newlineSep [str startStr, shows s,
+                str valueStr, shows g1,
+                str constrStr, shows g2]
 
 instance Show Module where
   showsPrec _ (Module l1 l2 rs) =

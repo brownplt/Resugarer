@@ -34,16 +34,15 @@
     (current-locale "en_US.UTF-8") ; How to make Racket read in unicode?
     (let-values [[(resugarer in out err)
                   (subprocess #f #f #f "hs/Resugarer" "hs/racket.grammar")]]
-      (let [[exp (λ (t)
-               (send-command (format "desugar ~a\n" (show-term t)) out)
-               (receive-response in err))]
-            [unexp (λ (t)
-               (send-command (format "resugar ~a\n" (show-term t)) out)
-               (receive-response in err))]]
-        (parameterize [[expand exp]
-                       [unexpand unexp]]
-          expr ...
-          (subprocess-kill resugarer #t))))))
+      (parameterize
+          [[expand (λ (t)
+             (send-command (format "desugar ~a\n" (show-term t)) out)
+             (receive-response in err))]
+           [unexpand (λ (t)
+             (send-command (format "resugar ~a\n" (show-term t)) out)
+             (receive-response in err))]]
+        expr ...
+        (subprocess-kill resugarer #t)))))
 
 (define-syntax-rule (without-resugaring expr ...)
   (parameterize [[expand (λ (t) t)]
@@ -89,7 +88,6 @@
   (test-eval ((lambda (x) (begin (set! x (+ x 1)) (+ x 1))) 3))
   
   (test-eval (inc 3))
-  (test-eval (incinc 3))
   (test-eval (inc (inc 3)))
   (test-eval (inc (inc (inc 3))))
   (test-eval (begin (+ 1 2) (+ 2 3) (+ 3 4)))
@@ -97,4 +95,11 @@
   (test-eval (let [[x (+ 1 2)]] (+ x 3)))
   (test-eval (let [[x 1] [y 2]] 3))
   (test-eval (let [[x (+ 1 2)] [y (+ 3 4)]] (+ x y)))
+  (test-eval (or 1))
+  (test-eval (or 1 2))
+  (test-eval (or (or #f #f) (or #f #t) (or #t #f)))
+  (test-eval (cond))
+  (test-eval (cond [#f 1] [#t 2]))
+  (test-eval (cond [#f 1] [(+ 1 2) (+ 3 4)] [#t 7]))
+  (test-eval (+ 1 (cond [#f (+ 1 2)] [(or #f #t) (+ 2 3)])))
 )

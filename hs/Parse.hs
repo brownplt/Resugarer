@@ -6,16 +6,20 @@ import Text.ParserCombinators.Parsec hiding (label)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.Maybe (maybe)
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 import Pattern
 import Grammar
 import Show
 
+import Debug.Trace (trace)
+
 
 lexer = P.makeTokenParser $ P.LanguageDef {
   P.commentStart = "(*",
   P.commentEnd = "*)",
-  P.commentLine = "",
+  P.commentLine = "#",
   P.nestedComments = True,
   P.identStart = upper,
   P.identLetter = letter <|> char '_',
@@ -55,15 +59,42 @@ top = do
   symbol surfaceStr
   l2 <- language
   rs <- rules
-  return (Module l1 l2 rs)
+  return $ compile $ Module l1 l2 rs
+
+compile :: Module -> Module
+-- Fill in pattern `Info`s.
+compile (Module l1@(Language (Grammar v1) _ _)
+                l2@(Language (Grammar v2) _ _) (Rules rs)) =
+  Module l1 l2 (Rules (map fillRuleInfo rs))
+    where
+      ls = prodLabels (v1 ++ v2)
+      
+      prodLabels :: [Production] -> Set Label
+      prodLabels = Set.fromList . map getLabel
+        where getLabel (Production (Constructor l _) _) = l
+    
+      fillRuleInfo :: Rule -> Rule
+      fillRuleInfo (Rule p q) = Rule (fillPattInfo p) (fillPattInfo q)
+    
+      fillPattInfo :: Pattern -> Pattern
+      fillPattInfo (PVar v) = PVar v
+      fillPattInfo (PConst c) = PConst c
+      fillPattInfo (PNode (Info z _) l ps) =
+        PNode (Info z (Set.member l ls)) l (map fillPattInfo ps)
+      fillPattInfo (PRep ps p) =
+        PRep (map fillPattInfo ps) (fillPattInfo p)
+      fillPattInfo (PList ps) = PList (map fillPattInfo ps)
+      fillPattInfo (PTag o p) = PTag o (fillPattInfo p)
 
 language :: Parser Language
 language = do
   symbol startStr
   s <- sortName
+  symbol valueStr
+  g1 <- grammar
   symbol constrStr
-  g <- grammar
-  return (Language g s)
+  g2 <- grammar
+  return (Language g1 g2 s)
 
 grammar :: Parser Grammar
 grammar = do
@@ -109,14 +140,14 @@ rules = do
 
 rule :: Parser Rule
 rule = do
-  p <- pattern False
+  p <- pattern
   symbol rewriteStr
-  q <- pattern True
+  q <- pattern
   symbol terminalStr
   return (Rule p q)
 
-pattern :: Bool -> Parser Pattern
-pattern z = do
+pattern :: Parser Pattern
+pattern = do
   p <- untaggedPattern
   ts <- optionMaybe tags
   case ts of
@@ -130,22 +161,21 @@ pattern z = do
         pConst = liftM PConst const
         pList = brackets pListElems
         pNode = do
-          z' <- optionMaybe (symbol transpStr)
-          case z' of
-            Just _ -> pattern (not z)
-            Nothing -> do
-              l <- label
-              args <- optionMaybe (parens (commaSep (pattern z)))
-              let nodeArgs = maybe [] id args
-              return (PNode l nodeArgs)
+          z <- optionMaybe (symbol transpStr)
+          l <- label
+          args <- optionMaybe (parens (commaSep pattern))
+          let nodeArgs = maybe [] id args
+              transp = maybe False (\x -> True) z
+          return (PNode (Info transp False) l nodeArgs) -- v filled in later
         pListElems = do
-          xs <- commaSep (pattern z)
+          xs <- commaSep pattern
           r <- optionMaybe (symbol repStr)
           case r of
             Nothing -> return (PList xs)
             Just _ -> case xs of
               [] -> fail "Invalid list."
               _:_ -> return (PRep (init xs) (last xs))
+
     addTags [] p = p
     addTags (o:os) p = addTags os (PTag o p)
 
