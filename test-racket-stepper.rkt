@@ -41,8 +41,9 @@
            [unexpand (λ (t)
              (send-command (format "resugar ~a\n" (show-term t)) out)
              (receive-response in err))]]
-        expr ...
-        (subprocess-kill resugarer #t)))))
+        (let [[result (begin expr ...)]]
+          (subprocess-kill resugarer #t)
+          result)))))
 
 (define-syntax-rule (without-resugaring expr ...)
   (parameterize [[expand (λ (t) t)]
@@ -86,6 +87,7 @@
   (test-eval (begin (+ 1 2) (+ 3 4)))
   (test-eval ((lambda (x) (if (set! x (+ x 1)) (cons x x) x)) 3))
   (test-eval ((lambda (x) (begin (set! x (+ x 1)) (+ x 1))) 3))
+  (test-eval ((lambda (f) (begin (set! f (lambda (x) x)) (f 4))) 3))
   
   (test-eval (inc 3))
   (test-eval (inc (inc 3)))
@@ -98,8 +100,32 @@
   (test-eval (or 1))
   (test-eval (or 1 2))
   (test-eval (or (or #f #f) (or #f #t) (or #t #f)))
-  (test-eval (cond))
-  (test-eval (cond [#f 1] [#t 2]))
-  (test-eval (cond [#f 1] [(+ 1 2) (+ 3 4)] [#t 7]))
-  (test-eval (+ 1 (cond [#f (+ 1 2)] [(or #f #t) (+ 2 3)])))
+  (test-eval (or (zero? 3) (sub1 3)))
+  (test-eval (and (not (zero? 3)) (sub1 3)))
+  (test-eval (cond [else 3]))
+  (test-eval (cond [#f 1] [else 2]))
+  (test-eval (cond [#f 1] [(+ 1 2) (+ 3 4)] [else 7]))
+  (test-eval (+ 1 (cond [#f (+ 1 2)] [(or #f #t) (+ 2 3)] [else #f])))
+  (test-eval (letrec [[x 1] [y 2]] (+ x y)))
+  (test-eval (letrec [[f (lambda (n) (g n))] [g (lambda (n) (+ n 1))]] (f 3)))
+  (test-eval (letrec [[double (lambda (n) (if (zero? n) 0 (+ 2 (double (- n 1)))))]] (double 3)))
+  #|
+  (test-eval (letrec [[is-even? (lambda (n)
+                        (or (zero? n) (is-odd? (sub1 n))))]
+                      [is-odd? (lambda (n)
+                        (and (not (zero? n)) (is-even? (sub1 n))))]]
+                     (is-odd? 11)))
+|#
+  (test-eval ((automaton init [init : accept]) "a"))
+  
+  (test-eval (let [[a (automaton
+                       init
+                       [init : ["c" -> more]]
+                       [more : ["a" -> more]
+                               ["d" -> more]
+                               ["r" -> end]]
+                       [end : accept])]]
+               (list (a "cadr")
+                     (a "cddr")
+                     (a "card"))))
 )

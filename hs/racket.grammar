@@ -11,7 +11,7 @@ core
     Id : String -> Expr;
 
   constructors
-    Lambda : [String] * [Expr] -> Expr;
+    Lambda : [String] * Expr -> Expr;
     Begin : [Expr] -> Expr;
     Set : String * Expr -> Expr;
     If : Expr * Expr * Expr -> Expr;
@@ -30,37 +30,66 @@ surface
     Str : String -> Expr;
     Id : String -> Expr;
 
-    Binding : String * Expr -> Binding;    
-	CondCase : Expr * Expr -> CondCase;
-	Else : Expr -> CondCase;
+    Bind : String * Expr -> Bind;    
+    CondCase : Expr * Expr -> CondCase;
+    Accept : AutomatonTransition;
+    ATransition : Expr * Expr -> AutomatonTransition;
+    ACondition : String * [AutomatonTransition] -> AutomatonCondition;
 
     Delay : Expr -> Expr;
 
   constructors
-    Lambda : [String] * [Expr] -> Expr;
+    Lambda : [String] * Expr -> Expr;
     Begin : [Expr] -> Expr;
     Set : String * Expr -> Expr;
     If : Expr * Expr * Expr -> Expr;
     Apply : Expr * [Expr] -> Expr;
 
  	Inc : Expr -> Expr;
-    Let : [Binding] * [Expr] -> Expr;
-    Cond : [CondCase] -> Expr;
+    Let : [Bind] * [Expr] -> Expr;
+    Letrec : [Bind] * [Expr] -> Expr;
+    Cond : [CondCase] * Expr -> Expr;
     Or : [Expr] -> Expr;
+    And : [Expr] -> Expr;
+    ProcessState : [AutomatonTransition] -> Expr;
+    Automaton : String * [AutomatonCondition] -> Expr;
 
 
 rules
-  Delay(x) -> Apply(Lambda([], [x]), []);
+  Delay(x) -> Apply(Lambda([], x), []);
 
   Inc(x) -> Apply(Id("+"), [x, Num("1")]);
-  Let([Binding(v, b)], [x ...]) ->
-    Apply(Lambda([v], [x ...]), [b]);
-  Let([Binding(v, b), bs ...], x) ->
-    Apply(Lambda([v], [!Let([bs ...], x)]), [b]);
-  Cond([]) -> Apply(Id("void"), []);
-  Cond([Else(x)]) -> x;
-  Cond([CondCase(x, y), cs ...]) ->
-    If(x, y, !Cond([cs ...]));
+  Let([Bind(v, b)], [x ...]) ->
+    Apply(Lambda([v], Begin([x ...])), [b]);
+  Let([Bind(v, b), Bind(v2, b2), bs ...], x) ->
+    Apply(Lambda([v], !Let([Bind(v2, b2), bs ...], x)), [b]);
+  Letrec([Bind(v, b) ...], [x ...]) ->
+    Let([Bind(v, Apply(Id("void"), [])) ...],
+      [Begin([Set(v, b) ...]), x ...]);
+  Cond([], e) -> e;
+  Cond([CondCase(x, y), cs ...], e) ->
+    If(x, y, !Cond([cs ...], e));
   Or([x]) -> Delay(x);
-  Or([x, xs ...]) ->
-    Let([Binding("t", x)], [If(Id("t"), Id("t"), !Or([xs ...]))]);
+  Or([x, y, ys ...]) ->
+    Let([Bind("t", x)], [If(Id("t"), Id("t"), !Or([y, ys ...]))]);
+  And([x]) -> Delay(x);
+  And([x, y, ys ...]) ->
+    If(x, And([y, ys ...]), False);
+
+  ProcessState([Accept]) ->
+    Lambda(["stream"],
+      Cond([CondCase(Apply(Id("equal?"), [Str(""), Id("stream")]), True)],
+            False));
+  ProcessState([ATransition(label, target) ...]) ->
+    Lambda(["stream"],
+      If(Apply(Id("equal?"), [Str(""), Id("stream")]),
+         False,
+         Let([Bind("head", Apply(Id("string-first"), [Id("stream")])),
+              Bind("tail", Apply(Id("string-rest"), [Id("stream")]))],
+             [Cond([CondCase(Apply(Id("equal?"), [label, Id("head")]),
+                            !Apply(target, [Id("tail")]))
+                    ...],
+                   False)])));
+  Automaton(init_state, [ACondition(state, [response ...]) ...]) ->
+    Letrec([Bind(state, ProcessState([response ...])) ...],
+           [Lambda(["x"], !Apply(Id(init_state), [Id("x")]))]);

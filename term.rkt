@@ -38,13 +38,19 @@
       (brackets (comma-sep xs)))
     (define (show-binding b)
       (match b [(list v x)
-                (show-node 'Binding (show-symbol v) (show-term x))]))
+                (show-node 'Bind (show-symbol v) (show-term x))]))
     (define (show-cond-case c)
       (match c
-        [(list 'else x)
-         (show-node 'Else (show-term x))]
         [(list c x)
          (show-node 'CondCase (show-term c) (show-term x))]))
+    (define (show-automaton-case c)
+      (match c [(list s ': ts ...)
+                (show-node 'ACondition
+                           (show-symbol s)
+                           (show-list (map show-automaton-transition ts)))]))
+    (define (show-automaton-transition t)
+      (match t ['accept (show-node 'Accept)]
+               [(list s '-> l) (show-node 'ATransition (show-term s) (show-term l))]))
     (match t
       [(Tagged os t)
        (string-append (show-term t) (origins->string os))]
@@ -54,12 +60,19 @@
       [(list 'let (list bs ...) xs ...)
        (show-node 'Let (show-list (map show-binding bs))
                        (show-list (map show-term xs)))]
-      [(list 'cond cs ...)
-       (show-node 'Cond (show-list (map show-cond-case cs)))]
+      [(list 'letrec (list bs ...) xs ...)
+       (show-node 'Letrec (show-list (map show-binding bs))
+                          (show-list (map show-term xs)))]
+      [(list 'cond cs ... (list 'else c))
+       (show-node 'Cond (show-list (map show-cond-case cs)) (show-term c))]
       [(list 'inc x)
        (show-node 'Inc (show-term x))]
       [(list 'or xs ...)
        (show-node 'Or (show-list (map show-term xs)))]
+      [(list 'and xs ...)
+       (show-node 'And (show-list (map show-term xs)))]
+      [(list 'automaton init cases ...)
+       (show-node 'Automaton (show-symbol init) (show-list (map show-automaton-case cases)))]
       ; Core
       [(? boolean? t)
        (if t (show-node 'True) (show-node 'False))]
@@ -69,9 +82,9 @@
        (show-node 'Str (show-string t))]
       [(? symbol? t)
        (show-node 'Id (show-string (symbol->string t)))]
-      [(list 'lambda (list (? symbol? vs) ...) xs ...)
+      [(list 'lambda (list (? symbol? vs) ...) x)
        (show-node 'Lambda (show-list (map show-symbol vs))
-                          (show-list (map show-term xs)))]
+                          (show-term x))]
       [(list 'begin x xs ...)
        (show-node 'Begin (show-list (map show-term (cons x xs))))]
       [(list 'set! (? symbol? v) x)
@@ -124,8 +137,8 @@
         [(Node 'Num (list x)) (string->number x)]
         [(Node 'Str (list x)) x]
         [(Node 'Id (list x)) (string->symbol x)]
-        [(Node 'Lambda (list vs xs))
-         (cons 'lambda (cons (map string->symbol vs) (map convert xs)))]
+        [(Node 'Lambda (list vs x))
+         (list 'lambda (map string->symbol vs) (convert x))]
         [(Node 'Begin (list xs))
          (cons 'begin (map convert xs))]
         [(Node 'Set (list v x))
@@ -135,21 +148,35 @@
         [(Node 'Apply (list f xs))
          (map convert (cons f xs))]
         ; Surface
-        [(Node 'Binding (list v b))
+        [(Node 'Bind (list v b))
          (list (string->symbol v) (convert b))]
         [(Node 'Let (list bs xs))
          (cons 'let (cons (map convert bs) (map convert xs)))]
+        [(Node 'Letrec (list bs xs))
+         (cons 'letrec (cons (map convert bs) (map convert xs)))]
         [(Node 'Else (list x))
          (list (convert x))]
         [(Node 'CondCase (list c x))
          (list (convert c) (convert x))]
-        [(Node 'Cond (list xs))
-         (cons 'cond (map convert xs))]
+        [(Node 'Cond (list xs e))
+         (cons 'cond (append (map convert xs) (list 'else (convert e))))]
         [(Node 'Inc (list x))
          (list 'inc (convert x))]
         [(Node 'Or (list xs))
          (cons 'or (map convert xs))]
-        ; Value
+        [(Node 'And (list xs))
+         (cons 'and (map convert xs))]
+        [(Node 'Accept (list))
+         'accept]
+        [(Node 'ATransition (list s l))
+         (list (convert s) '-> (convert l))]
+        [(Node 'ACondition (list s ts))
+         (cons (string->symbol s) (cons ': (map convert ts)))]
+        [(Node 'ProcessState (list xs))
+         (map convert xs)] ;??
+        [(Node 'Automaton (list init cases))
+         (cons 'automaton (cons (string->symbol init) (map convert cases)))]
+    ; Value
         [(Node 'Value (list x))
          (deserialize (read (open-input-string x)))]
         [_ (fail (format "Could not parse term: ~a" t))]))
@@ -212,6 +239,14 @@
   (test-conversion '(cond [1 2] [3 4]))
   (test-conversion '(or 1 2 3))
   (test-conversion `(delay 1))
+  (test-conversion `(letrec [[x 1] [y 2]] (+ x y)))
+  (test-conversion `(automaton
+                     init
+                     [init : ["c" -> more]]
+                     [more : ["a" -> more]
+                             ["d" -> more]
+                             ["r" -> end]]
+                     [end : accept]))
 
   
   #| RESUGARING |#

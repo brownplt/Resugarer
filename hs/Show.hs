@@ -2,7 +2,8 @@ module Show (rulesStr, surfaceStr, coreStr, startStr, valueStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr,
              hasTypeStr, typeProdStr, typeArrowStr, transpStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
-             macBodyStr, macAlienStr, macHeadStr, tagStr) where
+             macBodyStr, macAlienStr, macHeadStr, tagStr,
+             showTerm) where
 
 import Pattern
 import Grammar
@@ -76,15 +77,28 @@ instance Show Pattern where
 showTransp False = id
 showTransp True = str transpStr
 
+showTerm :: Bool -> Term -> ShowS
+-- show-tags?, term
+showTerm _ (TConst c) = shows c
+showTerm z (TList ts) = brackets (commaSep (map (showTerm z) ts))
+showTerm z (TNode l ts) = shows l . parens (commaSep (map (showTerm z) ts))
+showTerm z (TTag o t) = if z then showTags [o] t else showTerm z t
+  where
+    showTags os (TTag o t) = showTags (o:os) t
+    showTags os t =
+      showTerm z t . braces (brackets (commaSep (map (showOrigin z) os)))
+
+showOrigin :: Bool -> Origin -> ShowS
+showOrigin z (MacHead m i t) =
+  str macHeadStr . parens (commaSep [shows m, shows i, showTerm z t])
+showOrigin _ MacAlien = str macAlienStr
+showOrigin _ MacBody = str macBodyStr
+
 instance Show Term where
-  showsPrec _ (TConst c) = shows c
-  showsPrec _ (TList ts) = brackets (commaSep (map shows ts))
-  showsPrec _ (TNode l ts) = shows l . parens (commaSep (map shows ts))
-  showsPrec _ (TTag o t) = showTags [o] t
-    where
-      showTags os (TTag o t) = showTags (o:os) t
-      showTags os t =
-        shows t . braces (brackets (commaSep (map shows os)))
+  showsPrec _ t = showTerm True t
+
+instance Show Origin where
+  showsPrec _ o = showOrigin True o
 
 instance Show Const where
   showsPrec _ (CInt x) = shows x
@@ -93,12 +107,6 @@ instance Show Const where
 
 instance Show Var where
   showsPrec _ (Var v) = str varStr . str v
-
-instance Show Origin where
-  showsPrec _ (MacHead m i t) =
-    str macHeadStr . parens (commaSep [shows m, shows i, shows t])
-  showsPrec _ MacAlien = str macAlienStr
-  showsPrec _ MacBody = str macBodyStr
 
 instance Show Binding where
   showsPrec _ (BList bs) = brackets (commaSep (map shows bs))
@@ -182,3 +190,18 @@ instance Show SortError where
     str "Invalid rule: " . shows r
   showsPrec _ (SortErrorInRule e r) =
     shows e . str " in rule " . shows r
+
+instance Show WFError where
+  showsPrec _ (CasesOverlap l p q pq) =
+    str "In the rules for sugar " . shows l . str ", cases " .
+    shows p . str " and " . shows q . str " overlap with unification " .
+    shows pq
+  showsPrec _ (UnboundVar v) =
+    str "The variable " . shows v . str " is unbound"
+  showsPrec _ (EmptyEllipsis l) =
+    str "In a rule for sugar " . shows l .
+    str ", an ellipsis pattern contains no variables."
+
+instance Show CompilationError where
+  showsPrec _ (SortError e) = shows e
+  showsPrec _ (WFError e) = shows e

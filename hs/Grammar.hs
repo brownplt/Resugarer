@@ -53,6 +53,9 @@ data SortError = SortUnifyFailure Sort Sort
                | InvalidRule Rule
                | SortErrorInRule SortError Rule
 
+data CompilationError = SortError SortError
+                      | WFError WFError
+
 
 rulesToMacros :: Rules -> MacroTable
 rulesToMacros (Rules rs) = f (reverse rs) Map.empty
@@ -85,15 +88,21 @@ grammarToProductionTable (Grammar ps) =
       convert (p@(Production (Constructor l ss) s) : ps) m =
         convert ps (Map.insert l p m)
 
-compileModule :: Module -> Either SortError CompiledModule
+compileModule :: Module -> Either CompilationError CompiledModule
 compileModule (Module l1 l2 rs) =
   let l1' = compileLanguage l1
       l2' = compileLanguage l2
       Language (Grammar g1) (Grammar g2) _ = l1
       Language (Grammar g3) (Grammar g4) _ = l2
-      wholeGrammar = Grammar (g1 ++ g2 ++ g3 ++ g4) in do
+      wholeGrammar = Grammar (g1 ++ g2 ++ g3 ++ g4)
+      ms = rulesToMacros rs in do
   sortCheckRules (grammarToProductionTable wholeGrammar) rs
-  return (CompiledModule l1' l2' (rulesToMacros rs))
+  wfCheck (Map.elems ms)
+  return (CompiledModule l1' l2' ms)
+    where
+      wfCheck ms = case mapM_ wellFormedMacro ms of
+        Left err -> Left (WFError err)
+        Right () -> Right ()
 
 compileLanguage :: Language -> CompiledLanguage
 compileLanguage (Language (Grammar g1) (Grammar g2) s) =
@@ -124,11 +133,11 @@ termConforms g s t =
           (length ss == length ts) &&
           and (zipWith (termConforms g) ss ts)
 
-sortCheckRules :: ProductionTable -> Rules -> Either SortError ()
+sortCheckRules :: ProductionTable -> Rules -> Either CompilationError ()
 sortCheckRules g (Rules rs) = mapM_ checkRule rs
   where
     checkRule r = case sortCheckRule g r of
-      Left err -> Left (SortErrorInRule err r)
+      Left err -> Left (SortError (SortErrorInRule err r))
       Right () -> return ()
 
 sortCheckRule :: ProductionTable -> Rule -> Either SortError ()

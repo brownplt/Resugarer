@@ -173,8 +173,13 @@ subs e (PRep ps p)    = liftM TList (liftM2 (++) (mapM (subs e) ps) (subsList e 
 subs e (PTag o p)     = liftM (TTag o) (subs e p)
 
 subsList e p = do
-  es <- splitEnv e (Set.toList (fvars p))
-  mapM (\e -> subs e p) es
+  let vs = Set.toList (fvars p)
+  if null vs
+    then internalError
+         "Empty ellipsis: should have been caught by wf check"
+    else do
+    es <- splitEnv e (Set.toList (fvars p))
+    mapM (\e -> subs e p) es
 
 mtEnv = Map.empty
 singletonEnv v t = Map.singleton v (BTerm t)
@@ -188,6 +193,7 @@ splitEnv e vs = do
   n <- n
   mapM (\i -> mapWithKeyM (split i) e) [0 .. n-1]
   where
+    -- Caller must check that vs nonempty!
     n = case Map.lookup (head vs) e of
       Nothing -> Left (ResugarError (UnboundSubsVar (head vs)))
       Just (BTerm _) -> Left (ResugarError (DepthMismatch (head vs)))

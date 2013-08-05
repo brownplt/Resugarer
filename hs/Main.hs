@@ -50,7 +50,7 @@ readTerm str (CompiledLanguage g s) = do
     Right t -> if termConforms g (SortName s) t
                then return (Just t)
                else do
-                 problem ("nonconformant term! " ++ str)
+                 problem ("Nonconformant term: " ++ str)
                  return Nothing
 
 showResult :: Either ResugarFailure Term -> IO ()
@@ -76,7 +76,8 @@ mainLoop m@(CompiledModule l1 l2 ms) = do
             let CompiledLanguage gt sn = l1 in
             if termConforms gt (SortName sn) t
             then succeed t
-            else problem ("Your desugaring rules are incomplete on term: " ++ show t)
+            else problem ("Your desugaring rules are incomplete on term: "
+                          ++ showTerm False t "")
     Just (Resugar s) -> do
       t <- readTerm s l1
       case t of

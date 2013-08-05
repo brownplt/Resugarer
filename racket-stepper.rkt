@@ -223,11 +223,11 @@
        (adorn (TermList os_ (cons 'lambda rest)))]
       
       ; (lambda (v ...) x)
-      [(TermList os_ (list 'lambda (TermList os2_ (list (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'lambda (TermList os2_ (list (? symbol? vs_) ...)) xs_ ...))
        (with-syntax [[(vs* ...) vs_]
-                     [x* (adorn x_)]]
+                     [(xs* ...) (map adorn xs_)]]
          (with-syntax [[args* (annot/term os2_ #'(list vs* ...))]]
-           (with-syntax [[lambda* (annot/term os_ #'(list 'lambda args* x*))]]
+           (with-syntax [[lambda* (annot/term os_ #'(list 'lambda args* xs* ...))]]
              #'(let [[vs* 'vs*] ...]
                  lambda*))))]
       
