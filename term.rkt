@@ -197,13 +197,13 @@
   (define (test-conversion x)
     (check-equal? x (read-term (show-term x))))
 
+  
   (test-conversion (Tagged (list (MacBody) (MacBody))
                            (list '+ 'foo "bar" 3)))
   (test-conversion (Tagged (list (Alien))
                            `(+ (- x) 3)))
   (test-conversion (Tagged (list (MacHead 'Macro 2 `(+ x 1)))
                            `(+ x y)))
-
   (test-conversion `(lambda (x y) (+ x y)))
   (test-conversion `(let [] 3))
   (test-conversion `(let [[x 1] [y 2]] (+ x y)))

@@ -23,12 +23,12 @@ surface
   start Expr
 
   values
-    SValue : String -> Expr;
-    STrue : Expr;
-    SFalse : Expr;
-    SNum : String -> Expr;
-    SStr : String -> Expr;
-    SId : String -> Expr;
+    Value : String -> Expr;
+    True : Expr;
+    False : Expr;
+    Num : String -> Expr;
+    Str : String -> Expr;
+    Id : String -> Expr;
 
     Binding : String * Expr -> Binding;    
 	CondCase : Expr * Expr -> CondCase;
@@ -37,11 +37,11 @@ surface
     Delay : Expr -> Expr;
 
   constructors
-    SLambda : [String] * [Expr] -> Expr;
-    SBegin : [Expr] -> Expr;
-    SSet : String * Expr -> Expr;
-    SIf : Expr * Expr * Expr -> Expr;
-    SApply : Expr * [Expr] -> Expr;
+    Lambda : [String] * [Expr] -> Expr;
+    Begin : [Expr] -> Expr;
+    Set : String * Expr -> Expr;
+    If : Expr * Expr * Expr -> Expr;
+    Apply : Expr * [Expr] -> Expr;
 
  	Inc : Expr -> Expr;
     Let : [Binding] * [Expr] -> Expr;
@@ -50,20 +50,6 @@ surface
 
 
 rules
-
-  SValue(x) -> Value(x);
-  STrue -> True;
-  SFalse -> False;
-  SNum(x) -> Num(x);
-  SId(x) -> Id(x);
-  SStr(x) -> Str(x);
-
-  SLambda(v, x) -> Lambda(v, x);
-  SBegin(x) -> Begin(x);
-  SSet(v, x) -> Set(v, x);
-  SIf(x, y, z) -> If(x, y, z);
-  SApply(f, x) -> Apply(f, x);
-
   Delay(x) -> Apply(Lambda([], [x]), []);
 
   Inc(x) -> Apply(Id("+"), [x, Num("1")]);
