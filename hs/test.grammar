@@ -1,28 +1,15 @@
 core
-  start Expr
+  start CExpr
+  values
+    CNum : Int -> CExpr;
   constructors
-    Num : Int -> Expr;
-    Var : String -> Expr;
-    Apply : Expr * Expr -> Expr;
-    Lambda : String * Expr -> Expr;
-    Num : Int -> Expr;
-    Begin : [Expr] -> Expr;
-    If : Expr * Expr -> Expr;
+    Plus : CExpr * CExpr -> CExpr;
 surface
-  start Expr
+  start CExpr
+  values
+    SNum : Int -> CExpr;
   constructors
-    Num : Int -> Expr;
-    Var : String -> Expr;
-    Apply : Expr * Expr -> Expr;
-    Lambda : String * Expr -> Expr;
-    Num : Int -> Expr;
-    Begin : [Expr] -> Expr;
-    If : Expr * Expr -> Expr;
-    Let : String * Expr * Expr -> Expr;
-    Cond : [CondCase] -> Expr;
-    CondCase : Expr * Expr -> CondCase;
+    Inc : CExpr -> CExpr;
 rules
-  Let(v, x, y) -> Apply(Lambda(v, y), x);
-  Cond([]) -> Num(0);
-  Cond([CondCase(x, y), zs ...]) ->
-    If(x, y, Cond([zs ...]));
+  Inc(n) -> Plus(n, CNum(1));
+  SNum(n) -> CNum(n);

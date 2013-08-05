@@ -1,55 +1,68 @@
 core
 
-  start CExpr
+  start Expr
 
   values
-    Value : String -> CExpr;
-    True : CExpr;
-    False : CExpr;
-    Num : String -> CExpr;
-    Str : String -> CExpr;
-    Id : String -> CExpr;
+    Value : String -> Expr;
+    True : Expr;
+    False : Expr;
+    Num : String -> Expr;
+    Str : String -> Expr;
+    Id : String -> Expr;
 
   constructors
-    Lambda : [String] * [CExpr] -> CExpr;
-    Begin : [CExpr] -> CExpr;
-    Set : String * CExpr -> CExpr;
-    If : CExpr * CExpr * CExpr -> CExpr;
-    Apply : CExpr * [CExpr] -> CExpr;
+    Lambda : [String] * [Expr] -> Expr;
+    Begin : [Expr] -> Expr;
+    Set : String * Expr -> Expr;
+    If : Expr * Expr * Expr -> Expr;
+    Apply : Expr * [Expr] -> Expr;
 
 
 surface
 
-  start SExpr
+  start Expr
 
   values
-    Value : String -> SExpr;
-    True : SExpr;
-    False : SExpr;
-    Num : String -> SExpr;
-    Str : String -> SExpr;
-    Id : String -> SExpr;
+    SValue : String -> Expr;
+    STrue : Expr;
+    SFalse : Expr;
+    SNum : String -> Expr;
+    SStr : String -> Expr;
+    SId : String -> Expr;
 
-    Binding : String * SExpr -> Binding;    
-	CondCase : SExpr * SExpr -> CondCase;
-	Else : SExpr -> CondCase;
+    Binding : String * Expr -> Binding;    
+	CondCase : Expr * Expr -> CondCase;
+	Else : Expr -> CondCase;
 
-    Delay : SExpr -> SExpr;
+    Delay : Expr -> Expr;
 
   constructors
-    Lambda : [String] * [SExpr] -> SExpr;
-    Begin : [SExpr] -> SExpr;
-    Set : String * SExpr -> SExpr;
-    If : SExpr * SExpr * SExpr -> SExpr;
-    Apply : SExpr * [SExpr] -> SExpr;
+    SLambda : [String] * [Expr] -> Expr;
+    SBegin : [Expr] -> Expr;
+    SSet : String * Expr -> Expr;
+    SIf : Expr * Expr * Expr -> Expr;
+    SApply : Expr * [Expr] -> Expr;
 
- 	Inc : SExpr -> SExpr;
-    Let : [Binding] * [SExpr] -> SExpr;
-    Cond : [CondCase] -> SExpr;
-    Or : [SExpr] -> SExpr;
+ 	Inc : Expr -> Expr;
+    Let : [Binding] * [Expr] -> Expr;
+    Cond : [CondCase] -> Expr;
+    Or : [Expr] -> Expr;
 
 
 rules
+
+  SValue(x) -> Value(x);
+  STrue -> True;
+  SFalse -> False;
+  SNum(x) -> Num(x);
+  SId(x) -> Id(x);
+  SStr(x) -> Str(x);
+
+  SLambda(v, x) -> Lambda(v, x);
+  SBegin(x) -> Begin(x);
+  SSet(v, x) -> Set(v, x);
+  SIf(x, y, z) -> If(x, y, z);
+  SApply(f, x) -> Apply(f, x);
 
   Delay(x) -> Apply(Lambda([], [x]), []);
 

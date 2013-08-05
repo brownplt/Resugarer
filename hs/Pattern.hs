@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Pattern where
 
 import qualified Data.Map as Map
@@ -5,8 +6,6 @@ import Data.Map (Map)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Control.Monad (liftM, liftM2, zipWithM, when)
-
--- TODO: Pre-compute bodyWrap.
 
 
 newtype Var = Var String deriving (Eq, Ord)
@@ -19,6 +18,7 @@ data Macro = Macro Label [Rule]
 data Rule = Rule Pattern Pattern deriving (Eq)
 
 data Info = Info Bool Bool -- transp marked, always transparent
+noInfo = Info False False
 
 data Pattern =
     PVar Var
@@ -324,12 +324,13 @@ unexpand ms t = do
 
 
 {- Errors as Eithers -}
-
+#if __GLASGOW_HASKELL__ < 700
 instance Monad (Either a) where
   return x = Right x
   e >>= f = case e of 
     Left err -> Left err
     Right x -> f x
+#endif
 
 eitherOr :: Either e a -> Either e a -> Either e a
 eitherOr e1 e2 = case e1 of

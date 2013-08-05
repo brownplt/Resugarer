@@ -116,6 +116,7 @@ instance Show SortName where
   showsPrec _ (SortN s) = str s
 
 instance Show Sort where
+  showsPrec _ AnySort = str "?"
   showsPrec _ (SortName s) = shows s
   showsPrec _ (SortList s) = brackets (shows s)
   showsPrec _ IntSort = str intSortStr
@@ -170,3 +171,14 @@ instance Show ResugarFailure where
     str "The term being unexpanded is opaque"
   showsPrec _ (ResugarError err) = shows err
 
+instance Show SortError where
+  showsPrec _ (SortUnifyFailure s1 s2) =
+    str "Could not unify " . shows s1 . str " with " . shows s2
+  showsPrec _ (NoSuchConstructor l) =
+    str "There is no constructor named " . shows l
+  showsPrec _ (WrongArity p n) =
+    str "Expected arity " . shows n . str " in pattern " . shows p
+  showsPrec _ (InvalidRule r) =
+    str "Invalid rule: " . shows r
+  showsPrec _ (SortErrorInRule e r) =
+    shows e . str " in rule " . shows r

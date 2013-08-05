@@ -1,12 +1,24 @@
+{-# LANGUAGE CPP #-}
 module Main where
 
 import Pattern
 import Grammar
 import Parse
 import Show
+#if __GLASGOW_HASKELL__ >= 700
+import System.Environment
+#else
 import System
+#endif
 import System.IO
 import Data.List (stripPrefix)
+
+{- TODO:
+ -   proper arg parsing
+ -   pre-compute bodyWrap
+ -   hook up wf checks
+ -   check production table for duplicates
+ -}
 
 data Command = Desugar String
              | Resugar String
@@ -30,7 +42,7 @@ getCommand line =
         Nothing -> tryCommands rest
         Just s -> Just (con s)
 
-readTerm str (g, s) = do
+readTerm str (CompiledLanguage g s) = do
   case parseTerm "(input)" str of
     Left err -> do
       problem ("invalid term" ++ show err)
@@ -41,11 +53,13 @@ readTerm str (g, s) = do
                  problem ("nonconformant term! " ++ str)
                  return Nothing
 
+showResult :: Either ResugarFailure Term -> IO ()
 showResult (Left (ResugarError err)) = problem (show err)
 showResult (Left msg) = failure (show msg)
 showResult (Right t) = succeed t
 
-mainLoop ms l1 l2 = do
+mainLoop :: CompiledModule -> IO ()
+mainLoop m@(CompiledModule l1 l2 ms) = do
   hSetEncoding stdin utf8
   hSetEncoding stdout utf8
   hSetEncoding stderr utf8
@@ -56,13 +70,19 @@ mainLoop ms l1 l2 = do
       t <- readTerm s l2
       case t of
         Nothing -> return ()
-        Just t -> showResult (expand ms t)
+        Just t -> case expand ms t of
+          Left err -> showResult (Left err)
+          Right t ->
+            let CompiledLanguage gt sn = l1 in
+            if termConforms gt (SortName sn) t
+            then succeed t
+            else problem ("Your desugaring rules are incomplete on term: " ++ show t)
     Just (Resugar s) -> do
       t <- readTerm s l1
       case t of
         Nothing -> return ()
         Just t -> showResult (unexpand ms t)
-  mainLoop ms l1 l2
+  mainLoop m
 
 main = do
   -- TODO: proper arg parsing
@@ -71,11 +91,6 @@ main = do
   case parseModule filename src of
     Left err -> do
       problem ("Parse error in module: " ++ show err)
-    Right m@(Module (Language (Grammar v1) (Grammar g1) s1)
-                  (Language (Grammar v2) (Grammar g2) s2) rs) -> do
-      hPutStr stderr "Checking your desugaring for completeness... "
-      -- TODO: Implement completeness check.
-      hPutStrLn stderr "Well, I'm sure it'll be fine."
-      mainLoop (rulesToMacros rs)
-               (grammarToConstructorTable (Grammar (v1 ++ g1)), s1)
-               (grammarToConstructorTable (Grammar (v2 ++ g2)), s2)
+    Right m -> case compileModule m of
+      Left err -> problem (show err)
+      Right m -> mainLoop m

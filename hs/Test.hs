@@ -37,9 +37,6 @@ instance Arbitrary Rules where
 instance Arbitrary Grammar where
   arbitrary = liftM Grammar mediumList
 
-instance Arbitrary ConstructorTable where
-  arbitrary = liftM grammarToConstructorTable arbitrary
-
 instance Arbitrary Language where
   arbitrary = do
     g1 <- arbitrary
