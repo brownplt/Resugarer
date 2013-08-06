@@ -77,7 +77,7 @@
       [x x]))
   
   (define (pretty-term t [keep-tags #f])
-    (format "~a" (term->sexpr t keep-tags)))
+    (format "~v" (term->sexpr t keep-tags)))
   
   (define (reconstruct-stack x [stk $stk])
     (if (empty? stk)
