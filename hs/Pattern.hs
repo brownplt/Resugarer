@@ -82,6 +82,7 @@ data ResugarFailure = MatchFailure Term Pattern
 data WFError = CasesOverlap Label Pattern Pattern Pattern
              | UnboundVar Var
              | EmptyEllipsis Label
+             | DuplicateVar Var
 
 instance Show Label where
   show (Label l) = l
@@ -92,6 +93,23 @@ internalError msg = error ("Internal error: " ++ msg)
 
 varName :: Var -> String
 varName (Var name) = name
+
+fvarList :: Pattern -> [Var]
+fvarList (PVar v) = [v]
+fvarList (PConst _) = []
+fvarList (PNode _ _ ps) = concat (map fvarList ps)
+fvarList (PRep ps p) = (concat (map fvarList ps)) ++ fvarList p
+fvarList (PList ps) = concat (map fvarList ps)
+fvarList (PTag _ p) = fvarList p
+
+findDuplicate :: Ord a => [a] -> Maybe a
+findDuplicate xs = findDup xs Set.empty
+  where
+    findDup [] _ = Nothing
+    findDup (x:xs) s =
+      if Set.member x s
+      then Just x
+      else findDup xs (Set.insert x s)
 
 fvars :: Pattern -> Set Var
 fvars (PVar v) = Set.singleton v
@@ -255,6 +273,11 @@ unexpandMacro (Macro l cs) (i, t') t =
 
 {- Well-formedness Checking -}
 
+checkDuplicateVar :: Pattern -> Either WFError ()
+checkDuplicateVar p = case findDuplicate (fvarList p) of
+  Nothing -> return ()
+  Just v -> Left (DuplicateVar v)
+
 wellFormedMacro :: Macro -> Either WFError ()
 wellFormedMacro (Macro l cs) = do
   mapM_ disjointCases (allDistinctPairs cs)
@@ -266,6 +289,9 @@ wellFormedMacro (Macro l cs) = do
 
 wellFormedCase :: Label -> Rule -> Either WFError ()
 wellFormedCase l (Rule p q) = do
+  checkDuplicateVar p
+  -- TODO: figure out how to handle dup vars systematically
+  --  checkDuplicateVar q
   wellFormedPattern l p
   wellFormedPattern l q
   varSubset p q

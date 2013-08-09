@@ -18,6 +18,7 @@ import Data.List (stripPrefix)
  -   pre-compute bodyWrap
  -   hook up wf checks
  -   check production table for duplicates
+ -   extend model to handle duplicate atomic vars
  -}
 
 data Command = Desugar String

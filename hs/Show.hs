@@ -201,6 +201,9 @@ instance Show WFError where
   showsPrec _ (EmptyEllipsis l) =
     str "In a rule for sugar " . shows l .
     str ", an ellipsis pattern contains no variables."
+  showsPrec _ (DuplicateVar v) =
+    str "The variable " . shows v .
+    str " appears more than once in a pattern."
 
 instance Show CompilationError where
   showsPrec _ (SortError e) = shows e
