@@ -63,8 +63,8 @@ top = do
 
 compile :: Module -> Module
 -- Fill in pattern `Info`s.
-compile (Module l1@(Language (Grammar v1) _ _)
-                l2@(Language (Grammar v2) _ _) (Rules rs)) =
+compile (Module l1@(Language (Grammar v1) _)
+                l2@(Language (Grammar v2) _) (Rules rs)) =
   Module l1 l2 (Rules (map fillRuleInfo rs))
     where
       ls = prodLabels (v1 ++ v2)
@@ -88,13 +88,11 @@ compile (Module l1@(Language (Grammar v1) _ _)
 
 language :: Parser Language
 language = do
-  symbol startStr
-  s <- sortName
   symbol valueStr
   g1 <- grammar
   symbol constrStr
   g2 <- grammar
-  return (Language g1 g2 s)
+  return (Language g1 g2)
 
 grammar :: Parser Grammar
 grammar = do

@@ -1,4 +1,4 @@
-module Show (rulesStr, surfaceStr, coreStr, startStr, valueStr, constrStr,
+module Show (rulesStr, surfaceStr, coreStr, valueStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr,
              hasTypeStr, typeProdStr, typeArrowStr, transpStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
@@ -13,7 +13,6 @@ import Grammar
 
 surfaceStr = "surface"
 coreStr = "core"
-startStr = "start"
 valueStr = "values"
 constrStr = "constructors"
 rulesStr = "rules"
@@ -149,9 +148,8 @@ instance Show Rules where
     newlineSep (str rulesStr : map shows rs)
 
 instance Show Language where
-  showsPrec _ (Language g1 g2 s) =
-    newlineSep [str startStr, shows s,
-                str valueStr, shows g1,
+  showsPrec _ (Language g1 g2) =
+    newlineSep [str valueStr, shows g1,
                 str constrStr, shows g2]
 
 instance Show Module where

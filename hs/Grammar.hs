@@ -31,7 +31,7 @@ data Constructor = Constructor Label [Sort]
 data Rules = Rules [Rule]
            deriving (Eq)
 
-data Language = Language Grammar Grammar SortName
+data Language = Language Grammar Grammar
               deriving (Eq)
 
 data Module = Module Language Language Rules
@@ -41,7 +41,7 @@ data CompiledModule =
   CompiledModule CompiledLanguage CompiledLanguage MacroTable
 
 data CompiledLanguage =
-  CompiledLanguage ConstructorTable SortName
+  CompiledLanguage ConstructorTable
 
 type ProductionTable = Map Label Production
 
@@ -92,8 +92,8 @@ compileModule :: Module -> Either CompilationError CompiledModule
 compileModule (Module l1 l2 rs) =
   let l1' = compileLanguage l1
       l2' = compileLanguage l2
-      Language (Grammar g1) (Grammar g2) _ = l1
-      Language (Grammar g3) (Grammar g4) _ = l2
+      Language (Grammar g1) (Grammar g2) = l1
+      Language (Grammar g3) (Grammar g4) = l2
       wholeGrammar = Grammar (g1 ++ g2 ++ g3 ++ g4)
       ms = rulesToMacros rs in do
   sortCheckRules (grammarToProductionTable wholeGrammar) rs
@@ -105,9 +105,9 @@ compileModule (Module l1 l2 rs) =
         Right () -> Right ()
 
 compileLanguage :: Language -> CompiledLanguage
-compileLanguage (Language (Grammar g1) (Grammar g2) s) =
+compileLanguage (Language (Grammar g1) (Grammar g2)) =
   let g = Grammar (g1 ++ g2) in
-  CompiledLanguage (grammarToConstructorTable g) s
+  CompiledLanguage (grammarToConstructorTable g)
 
 constToSort :: Const -> Sort
 constToSort (CInt _) = IntSort

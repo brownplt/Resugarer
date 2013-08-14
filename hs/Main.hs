@@ -11,7 +11,8 @@ import System.Environment
 import System
 #endif
 import System.IO
-import Data.List (stripPrefix)
+import Data.Char (isSpace)
+import Data.List (stripPrefix, span)
 
 {- TODO:
  -   proper arg parsing
@@ -21,8 +22,8 @@ import Data.List (stripPrefix)
  -   extend model to handle duplicate atomic vars
  -}
 
-data Command = Desugar String
-             | Resugar String
+data Command = Desugar SortName String
+             | Resugar SortName String
 
 commands = [("desugar ", Desugar),
             ("resugar ", Resugar)]
@@ -41,14 +42,17 @@ getCommand line =
     tryCommands ((cmd, con):rest) =
       case stripPrefix cmd line of
         Nothing -> tryCommands rest
-        Just s -> Just (con s)
+        Just s ->
+          let (sn, s') = span (not . isSpace) s
+              (_, s'') = span isSpace s' in
+          Just (con (SortN sn) s'')
 
-readTerm str (CompiledLanguage g s) = do
+readTerm str (CompiledLanguage g) sn = do
   case parseTerm "(input)" str of
     Left err -> do
       problem ("invalid term" ++ show err)
       return Nothing
-    Right t -> if termConforms g (SortName s) t
+    Right t -> if termConforms g (SortName sn) t
                then return (Just t)
                else do
                  problem ("Nonconformant term: " ++ str)
@@ -67,20 +71,20 @@ mainLoop m@(CompiledModule l1 l2 ms) = do
   line <- getLine
   case getCommand line of
     Nothing -> problem "invalid command"
-    Just (Desugar s) -> do
-      t <- readTerm s l2
+    Just (Desugar sn s) -> do
+      t <- readTerm s l2 sn
       case t of
         Nothing -> return ()
         Just t -> case expand ms t of
           Left err -> showResult (Left err)
           Right t ->
-            let CompiledLanguage gt sn = l1 in
+            let CompiledLanguage gt = l1 in
             if termConforms gt (SortName sn) t
             then succeed t
             else problem ("Your desugaring rules are incomplete on term: "
                           ++ showTerm False t "")
-    Just (Resugar s) -> do
-      t <- readTerm s l1
+    Just (Resugar sn s) -> do
+      t <- readTerm s l1 sn
       case t of
         Nothing -> return ()
         Just t -> showResult (unexpand ms t)

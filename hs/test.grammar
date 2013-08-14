@@ -1,15 +1,13 @@
 core
-  start CExpr
   values
-    CNum : Int -> CExpr;
+    CNum : Int -> Expr;
   constructors
-    Plus : CExpr * CExpr -> CExpr;
+    Plus : Expr * Expr -> Expr;
 surface
-  start CExpr
   values
-    SNum : Int -> CExpr;
+    SNum : Int -> Expr;
   constructors
-    Inc : CExpr -> CExpr;
+    Inc : Expr -> Expr;
 rules
   Inc(n) -> Plus(n, CNum(1));
   SNum(n) -> CNum(n);

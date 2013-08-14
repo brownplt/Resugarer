@@ -1,7 +1,5 @@
 core
 
-  start Expr
-
   values
     Value : String -> Expr;
     True : Expr;
@@ -19,8 +17,6 @@ core
 
 
 surface
-
-  start Expr
 
   values
     Value : String -> Expr;

@@ -41,7 +41,7 @@ instance Arbitrary Language where
   arbitrary = do
     g1 <- arbitrary
     g2 <- arbitrary
-    return (Language g1 g2 (SortN "Expr"))
+    return (Language g1 g2)
 
 instance Arbitrary Module where
   arbitrary = liftM3 Module arbitrary arbitrary arbitrary

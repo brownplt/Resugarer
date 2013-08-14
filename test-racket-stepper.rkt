@@ -36,10 +36,10 @@
                   (subprocess #f #f #f "hs/Resugarer" "hs/racket.grammar")]]
       (parameterize
           [[expand (λ (t)
-             (send-command (format "desugar ~a\n" (show-term t)) out)
+             (send-command (format "desugar Expr ~a\n" (show-term t)) out)
              (receive-response in err))]
            [unexpand (λ (t)
-             (send-command (format "resugar ~a\n" (show-term t)) out)
+             (send-command (format "resugar Expr ~a\n" (show-term t)) out)
              (receive-response in err))]]
         (let [[result (begin expr ...)]]
           (subprocess-kill resugarer #t)
