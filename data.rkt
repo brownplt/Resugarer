@@ -17,8 +17,7 @@
   (define (check-term-list? x)
     (if (list? x) #t (fail "Boom! ~a" x)))
 
-  ; Common data structures
-    #| Tag ::= MacHead(macro-name, case-number, origin-term)
+  #| Tag ::= MacHead(macro-name, case-number, origin-term)
              -- Marks root of macro-originating code.
            | MacBody: Marks code that originated from a macro.
            | Alien: Marks code that is not from here. |#
