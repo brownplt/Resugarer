@@ -41,11 +41,9 @@ data CompiledModule =
   CompiledModule CompiledLanguage CompiledLanguage MacroTable
 
 data CompiledLanguage =
-  CompiledLanguage ConstructorTable
+  CompiledLanguage ProductionTable
 
 type ProductionTable = Map Label Production
-
-type ConstructorTable = Map SortName [Constructor]
 
 data SortError = SortUnifyFailure Sort Sort
                | NoSuchConstructor Label
@@ -55,6 +53,9 @@ data SortError = SortUnifyFailure Sort Sort
 
 data CompilationError = SortError SortError
                       | WFError WFError
+
+data ConformanceError = NonConformant Term Sort
+                      | NonConformantC Label
 
 
 rulesToMacros :: Rules -> MacroTable
@@ -70,14 +71,6 @@ rulesToMacros (Rules rs) = f (reverse rs) Map.empty
       in f rs ms'
     f _ _ = internalError
             "rulesToMacros: invalid rule not caught by sort checking."
-
-grammarToConstructorTable :: Grammar -> ConstructorTable
-grammarToConstructorTable (Grammar ps) =
-  convert ps Map.empty
-    where
-      convert [] m = m
-      convert (Production c s : ps) m =
-        convert ps (Map.insertWith (++) s [c] m)
 
 -- TODO: check for duplicates
 grammarToProductionTable :: Grammar -> ProductionTable
@@ -95,8 +88,9 @@ compileModule (Module l1 l2 rs) =
       Language (Grammar g1) (Grammar g2) = l1
       Language (Grammar g3) (Grammar g4) = l2
       wholeGrammar = Grammar (g1 ++ g2 ++ g3 ++ g4)
-      ms = rulesToMacros rs in do
-  sortCheckRules (grammarToProductionTable wholeGrammar) rs
+      ms = rulesToMacros rs
+      table = grammarToProductionTable wholeGrammar in do
+  sortCheckRules table rs
   wfCheck (Map.elems ms)
   return (CompiledModule l1' l2' ms)
     where
@@ -107,31 +101,32 @@ compileModule (Module l1 l2 rs) =
 compileLanguage :: Language -> CompiledLanguage
 compileLanguage (Language (Grammar g1) (Grammar g2)) =
   let g = Grammar (g1 ++ g2) in
-  CompiledLanguage (grammarToConstructorTable g)
+  CompiledLanguage (grammarToProductionTable g)
 
 constToSort :: Const -> Sort
 constToSort (CInt _) = IntSort
 constToSort (CDbl _) = FloatSort
 constToSort (CStr _) = StringSort
 
-termConforms :: ConstructorTable -> Sort -> Term -> Bool
+termConforms :: ProductionTable -> Sort -> Term ->
+                Either ConformanceError ()
 termConforms g s t =
+  let nonconformant = Left (NonConformant t s)
+      noSuchConstructor l = Left (NonConformantC l) in
   case t of
-    TConst c -> s == constToSort c
+    TConst c -> if constToSort c == s
+                then return ()
+                else nonconformant
     TList ts -> case s of
-      SortList s -> and (map (termConforms g s) ts)
-      _ -> False
+      SortList s -> mapM_ (termConforms g s) ts
+      _ -> nonconformant
     TTag _ t -> termConforms g s t
-    TNode l ts -> case s of
-      SortName name -> case Map.lookup name g of
-        Nothing -> False
-        Just cs -> or (map conforms cs)
-      _ -> False
-      where
-        conforms (Constructor l' ss) =
-          (l == l') &&
-          (length ss == length ts) &&
-          and (zipWith (termConforms g) ss ts)
+    TNode l ts -> case Map.lookup l g of
+      Nothing -> noSuchConstructor l
+      Just (Production (Constructor l' ss) s') ->
+        if l == l' && length ts == length ss && s == SortName s'
+        then zipWithM_ (termConforms g) ss ts
+        else nonconformant
 
 sortCheckRules :: ProductionTable -> Rules -> Either CompilationError ()
 sortCheckRules g (Rules rs) = mapM_ checkRule rs

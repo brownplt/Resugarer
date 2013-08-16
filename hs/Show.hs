@@ -206,3 +206,10 @@ instance Show WFError where
 instance Show CompilationError where
   showsPrec _ (SortError e) = shows e
   showsPrec _ (WFError e) = shows e
+
+instance Show ConformanceError where
+  showsPrec _ (NonConformant t s) =
+    str "Nonconformant term. The subterm " . shows t .
+    str " does not match the expected sort " . shows s
+  showsPrec _ (NonConformantC l) =
+    str "There is no constructor named " . shows l

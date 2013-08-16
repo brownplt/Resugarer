@@ -32,8 +32,8 @@ output str = do
   putStrLn str
   hFlush stdout
 succeed t = output ("success: " ++ show t)
-failure msg = output ("failure: " ++ msg)
-problem msg = output ("error: " ++ msg)
+failure msg = output (removeNewlines ("failure: " ++ msg))
+problem msg = output (removeNewlines ("error: " ++ msg))
 
 getCommand line =
   tryCommands commands
@@ -52,11 +52,11 @@ readTerm str (CompiledLanguage g) sn = do
     Left err -> do
       problem ("invalid term" ++ show err)
       return Nothing
-    Right t -> if termConforms g (SortName sn) t
-               then return (Just t)
-               else do
-                 problem ("Nonconformant term: " ++ str)
-                 return Nothing
+    Right t -> case termConforms g (SortName sn) t of
+      Right () -> return (Just t)
+      Left err -> do
+        problem (show err)
+        return Nothing
 
 showResult :: Either ResugarFailure Term -> IO ()
 showResult (Left (ResugarError err)) = problem (show err)
@@ -79,16 +79,20 @@ mainLoop m@(CompiledModule l1 l2 ms) = do
           Left err -> showResult (Left err)
           Right t ->
             let CompiledLanguage gt = l1 in
-            if termConforms gt (SortName sn) t
-            then succeed t
-            else problem ("Your desugaring rules are incomplete on term: "
-                          ++ showTerm False t "")
+            case termConforms gt (SortName sn) t of
+              Right () -> succeed t
+              Left err ->
+                problem ("Your desugaring rules are incomplete on term: "
+                          ++ showTerm False t "" ++ ". " ++ show err)
     Just (Resugar sn s) -> do
       t <- readTerm s l1 sn
       case t of
         Nothing -> return ()
         Just t -> showResult (unexpand ms t)
   mainLoop m
+
+removeNewlines :: String -> String
+removeNewlines = map (\c -> if c == '\n' then ' ' else c)
 
 main = do
   -- TODO: proper arg parsing
