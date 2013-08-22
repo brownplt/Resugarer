@@ -158,12 +158,13 @@ instance Show Module where
 
 instance Show ResugarError where
   showsPrec _ (NoMatchingCase l t) =
-    str "No matching case in macro " . shows l . str " for term " . shows t
+    str "No matching case for constructor " . shows l .
+    str " with term " . shows t
   showsPrec _ (NoSuchMacro l) =
     str "The label " . shows l . str (" appears in a core term tag," ++
       "but there is no corresponding desugaring rule.")
   showsPrec _ (NoSuchCase l i) =
-    str "A tag refers to case " . shows i . str " in macro " .
+    str "A tag refers to case " . shows i . str " in constructor " .
     shows l . str ", but no such case exists."
   showsPrec _ (UnboundSubsVar v) =
     str "Unbound variable " . shows v
