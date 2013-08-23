@@ -142,10 +142,6 @@
   (define (annot/frame expr_ os_ frame_)
     (with-syntax [[expr* expr_]
                   [frame* (make-frame os_ frame_)]]
-      #;#'(begin ($push! frame*)
-               (let [[$val expr*]]
-                 ($pop!)
-                 $val)) ; insignificant
       #'(begin ($push! frame*)
                ($set-val! expr*)
                ($pop!)
