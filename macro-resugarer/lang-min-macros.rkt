@@ -28,8 +28,8 @@
    (lambda unused body)])
 
 (define-macro Force
-  [(Force Thunk)
-   (apply Thunk "unused")])
+  [(Force thunk)
+   (apply thunk "unused")])
 
 (define-macro Let
   [(Let x e b)
