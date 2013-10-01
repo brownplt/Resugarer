@@ -5,6 +5,39 @@
 (require "lang-min.rkt")
 
 
+;;; Let ;;;
+
+(define-macro Let
+  [(Let x e b)
+   (apply (lambda x b) e)])
+
+(define-macro Letrec
+  [(Letrec x e b)
+   (Let x 0 (begin (set! x e) b))])
+
+(define-macro Letrecs
+  [(Letrecs [^ [^ x e] ...] b)
+   (Lets [^ [^ x 0] ...]
+         (begin (set! x e) ... b))])
+
+(define-macro Lets
+  [(Lets [^ [^ x e]] b)
+   (apply (lambda x b) e)]
+  [(Lets [^ [^ x e] y ys ...] b)
+   (apply (lambda x (! Lets [^ y ys ...] b)) e)])
+
+
+;;; Thunks ;;;
+
+(define-macro Thunk
+  [(Thunk body)
+   (λ unused body)])
+
+(define-macro Force
+  [(Force thunk)
+   (apply thunk "unused")])
+
+
 ;;; Booleans ;;;
 
 (define-macro True
@@ -17,7 +50,7 @@
 
 (define-macro If
   [(If x y z)
-   (apply (apply x y) z)])
+   (Force (apply x (Thunk y) (Thunk z)))])
 
 (define-macro Not
   [(Not x)
@@ -67,11 +100,6 @@
   [(Decr n)
    (Snd n)])
 
-#|(define-macro Plus ; doesn't work
-  [(Plus n m)
-   (Letrec plus
-           (λ n (λ m (If (Zero? n) m (apply plus (Decr n) (! S m)))))
-           (apply (apply plus n) m))]) |#
 
 (test-eval (If (Not (True)) (Not (True)) (Not (False))))
 (test-eval (And (Or (True) (False)) (Or (False) (False))))
@@ -80,4 +108,3 @@
 (test-eval (Zero? (Zero)))
 (test-eval (Zero? (S (S (Zero)))))
 (test-eval (Zero? (Decr (Decr (S (S (Zero)))))))
-
