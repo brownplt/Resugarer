@@ -11,8 +11,8 @@
    language language-name language-expr->term language-term->expr language-step language-show-expr
    macro-aware-step
    macro-aware-eval
-   macro-aware-eval*)
-   ;set-debug-tags! set-debug-steps! debug set-debug!)
+   macro-aware-eval*
+   set-debug-tags! set-debug-steps! debug set-debug!)
   
   (define DEBUG_TAGS #f)
   (define (set-debug-tags! x) (set! DEBUG_TAGS x))
