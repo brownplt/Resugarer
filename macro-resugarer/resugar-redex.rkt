@@ -1,8 +1,5 @@
 (module resugar-redex racket
   (require redex)
-;  (require "utility.rkt")
-;  (require "pattern.rkt")
-;  (require "macro.rkt")
   (require "resugar.rkt")
   (provide
    make-redex-language
@@ -85,20 +82,20 @@
                     join
                     split))
   
-  (define (macro-aware-redex-step l t)
+  (define (macro-aware-redex-step l t n)
     (let [[split (redex-language-split l)]
           [join (redex-language-join l)]
           [term->expr (language-term->expr l)]
           [expr->term (language-expr->term l)]
           [show-expr (language-show-expr l)]]
 
-      (display (format "~a\n" (show-expr (car (split t)) (cdr (split t)))))
     (let [[ps (macro-aware-step
                l
-               (unexpand-term (expr->term (car (split t))))
+               (expr->term (car (split t)) (cdr (split t)))
                (cdr (split t)))]]
-      (if (empty? ps) #f
-          (join (term->expr (expand-term (caar ps))) (cdar ps))))))
+      (if (< (length ps) n) #f
+          (join (term->expr (expand-term (car (list-ref ps (- n 1)))))
+                (cdr (list-ref ps (- n 1))))))))
 
   (define-struct hidden ())
   
@@ -106,23 +103,17 @@
     (let [[expr->term (language-expr->term l)]
           [split (redex-language-split l)]]
       (if (not t) "END"
-          (let [[u (unexpand-term (expr->term (car (split t))))]]
+          (let [[u (unexpand-term (expr->term (car (split t)) (cdr (split t)) #t))]]
             (if (could-not-unexpand? u) (hidden) (term->sexpr u))))))
 
   (define-syntax-rule
     (macro-aware-traces l red t rest ...)
     (traces red t
             #:pp (lambda (s a b c)
-                   (default-pretty-printer (format-term-for-traces l s)
+                   (default-pretty-printer
+                     (format-term-for-traces l s)
                      a b c))
+            #:filter (lambda (x y) x)
             rest ...))
-  
-  ; TODO: test cases
-  
-  ;(define-syntax-rule (test-conversion t)
-;  (check-equal? (pattern->term (term->pattern (term t)))
-;                (term t)))
 
-;(test-conversion (+ (origins ()) 1 2))
-;(test-conversion (if0 (origins (a b)) (+ (origins (b a)) x 3) 5 6))
 )

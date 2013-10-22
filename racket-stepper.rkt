@@ -3,6 +3,7 @@
   ;(provide test-eval profile-eval test-term expand unexpand)
   (require "data.rkt")
   (require "utility.rkt")
+  (require "term.rkt")
   (require profile)
   
   (define expand (make-parameter #f))
@@ -389,6 +390,54 @@
   
   
 
+  
+  ;;; Communication ;;;
+  
+  (define (send-command cmd out)
+  (when DEBUG_COMMUNICATION (display cmd))
+  (display cmd out)
+  (flush-output out))
+  
+  (define (read-port port [str ""])
+    (let [[line (read-line port)]]
+      (if (eof-object? line)
+          str
+          (read-port port (string-append str line)))))
+  
+  (define (receive-response in err)
+    (let [[response (read-line in)]]
+      (when DEBUG_COMMUNICATION (display response) (newline))
+      (cond [(eof-object? response)
+             (display (read-port err)) (newline)
+             (fail "Received EOF")]
+            [(strip-prefix "success: " response)
+             => (λ (t) (term->sexpr (read-term t)))]
+            [(strip-prefix "failure: " response)
+             => (λ (_) (CouldNotUnexpand))]
+            [(strip-prefix "error: " response)
+             => (λ (msg) (fail msg))])))
+  
+  (define-syntax-rule (with-resugaring expr ...)
+    (begin
+      (current-locale "en_US.UTF-8") ; How to make Racket read in unicode?
+      (let-values [[(resugarer in out err)
+                    (subprocess #f #f #f "hs/Resugarer" "racket.grammar")]]
+        (parameterize
+            [[expand (λ (t)
+                       (send-command (format "desugar Expr ~a\n" (show-term t)) out)
+                       (receive-response in err))]
+             [unexpand (λ (t)
+                         (send-command (format "resugar Expr ~a\n" (show-term t)) out)
+                         (receive-response in err))]]
+          (let [[result (begin expr ...)]]
+            (subprocess-kill resugarer #t)
+            result)))))
+  
+  (define-syntax-rule (without-resugaring expr ...)
+    (parameterize [[expand (λ (t) t)]
+                   [unexpand (λ (t) t)]]
+      expr ...))
+  
   
   
   ;;; Testing ;;;

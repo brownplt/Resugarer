@@ -40,8 +40,8 @@ surface
     Set : String * Expr -> Expr;
     If : Expr * Expr * Expr -> Expr;
     Apply : Expr * [Expr] -> Expr;
-
- 	Inc : Expr -> Expr;
+    
+    Inc : Expr -> Expr;
     Let : [Bind] * [Expr] -> Expr;
     Letrec : [Bind] * [Expr] -> Expr;
     Cond : [CondCase] * Expr -> Expr;

@@ -108,3 +108,16 @@
 (test-eval (Zero? (Zero)))
 (test-eval (Zero? (S (S (Zero)))))
 (test-eval (Zero? (Decr (Decr (S (S (Zero)))))))
+
+#| addition?
+(define-macro Plus ; doesn't work
+  [(Plus n m)
+   (Letrec plus
+           (λ n (λ m (If (Zero? n) m (apply plus (Decr n) (S m)))))
+           (apply plus n m))])
+(test-eval
+ (Letrec plus
+         (! λ n (λ m (If (Zero? n) m (apply plus (! Decr n) (! S m)))))
+         (apply plus (S (S (Zero))) (S (Zero)))))
+(test-eval (Plus (S (S (Zero))) (S (Zero))))
+|#

@@ -109,17 +109,21 @@
       
       (new-step (term->expr (expand-term t)) ctx)))
   
-  ; macro-aware-eval :: Language t c -> term -> c -> list (cons term c)
+  ; macro-aware-eval :: Language t c -> term -> c -> tree string
   (define (macro-aware-eval lang t ctx)
     (define (rec lang t ctx)
       (let [[next-progs (macro-aware-step lang t ctx)]
             [show-expr (language-show-expr lang)]
             [term->expr (language-term->expr lang)]]
+        
         (cons (show-expr (term->expr t) ctx)
               (if (empty? next-progs)
                   (list)
-                  (rec lang (caar next-progs) (cdar next-progs))))))
-    (deduplicate (rec lang t ctx)))
+                  (map (lambda (next-prog)
+                         (rec lang (car next-prog)
+                                   (cdr next-prog)))
+                       next-progs)))))
+    (rec lang t ctx))
   
   (define (emit t)
     (let [[t2 (unexpand-term t)]]

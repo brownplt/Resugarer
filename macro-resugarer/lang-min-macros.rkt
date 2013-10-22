@@ -17,7 +17,6 @@
 ; * var lifting  NOT DONE
 ; * traffic/elevator/nonpl
 
-; Bugs:
 ; * Sometimes a macro RHS must be wrapped in 'begin' for two reasons:
 ;   - So that it's reduction shows as a step (otherwise, e.g. (or (+ 1 2)) -> 3)
 ;   - So that a calling macro doesn't inadvertently tag a constant.
@@ -123,19 +122,6 @@
   [(TwiceEvaled x y z ...)
    (apply (lambda w (TwiceEvaled x (+ z w) ...))
           (apply (lambda v x) y))])
-;   (apply (lambda v x)
-;   (Letrec map (lambda f (lambda l
-;                 (if (empty? l)
-;                     empty
-;                     (cons (apply f (first l))
-;                           (apply map f (rest l))))))
-;     (apply map (lambda v x) (list y ...)))])
-
-;(test-eval (Engine [^ "x" : "accept"]))
-;(test-eval (run (Engine [^ "x" : "accept"]) "x" empty))
-;(test-eval (run (Engine [^ "x" : "accept"]) "x" (cons "x" empty)))
-;(test-eval (run (Engine [^ "more" : [^ "a" -> "more"]]) "more"
-;                (cons "a" (cons "a" (cons "a" empty)))))
 
 (define-macro Cdavr
   [(Cdavr input)
@@ -183,7 +169,7 @@
 (test-eval (Lets [^ [^ f (λ x (+ x 1))]] (apply f 3)))
 (test-eval (Cdavr "cadr"))
 (test-eval (Cdavr "cdad"))
-(test-eval (Letrecs [^ [^ y x] [^ x 1]] (+ x y)))
+(test-eval (Letrecs [^ [^ y (+ x 1)] [^ x 1]] (+ x y)))
 (test-eval
  (Let M (Automaton
          init
@@ -193,7 +179,7 @@
                     [^ "r" $-> end]]
          [^ end $:  "accept"])
    (apply M "cadr")))
-(test-eval
+(test-trace
  (Let M (Automaton
          init
          [^ init $: [^ "c" $-> more]]
@@ -203,30 +189,14 @@
          [^ end $:  "accept"])
    (apply M "cdad")))
 
-(test-eval (Letrecs [^ [^ f (λ n (if (eq? n 0) 77 (apply f (! + 0 0))))]]
-                    (apply f (+ 1 2))))
+;(test-eval (Letrecs [^ [^ f (λ n (if (eq? n 0) 77 (apply f (! + 0 0))))]]
+;                    (apply f (+ 1 2))))
 
 ;(test-eval (std-Letrecs [^ [^ x 1]] x))
 
-#|
-(test-eval
- (Automaton
-  init
-  [^ init : "accept"]))
 
-(test-eval
- (Let M (Automaton
-         init
-         [^ init : "accept"])
-   (apply M empty)))
-
-(test-eval
- (Let M (Automaton
-         init
-         [^ init : [^ "a" -> init]])
-   (apply M (cons "a" (cons "a" (cons "a" empty))))))
-|#
-
+;(test-trace (Let x 1 x))
+;(test-trace (+ (+ 1 2) (+ 3 4)))
 ;(test-trace (+ 1 2))
 ;(test-trace (Letrec x x x))
 ;(test-trace (Letrecs [^ [^ x (lambda z y)] [^ y (lambda z x)]]

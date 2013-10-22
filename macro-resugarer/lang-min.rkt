@@ -2,6 +2,7 @@
   (provide
    Min red
    test-eval test-expand
+   test-trace
    )
 
 ; Assembled from Matthias' letrec (personal correspondence)
@@ -215,21 +216,40 @@
 (define MAMin
   (make-redex-language "Min" Min red join split lookup-var))
 
+(define (flatten-eval-tree tree)
+  (if (empty? (cdr tree))
+      (list (car tree))
+      (cons (car tree) (flatten-eval-tree (second tree)))))
+
 (define-syntax-rule (test-eval t)
   (begin
     (for-each (λ (x) (display (format "~a\n" x)))
-              (macro-aware-eval MAMin (make-term t) empty-store))
+              (flatten-eval-tree
+               (macro-aware-eval MAMin (make-term t) empty-store)))
     (display "\n")))
 
 (define-syntax-rule (make-redex-term t)
-  (term->redex (expand-term (make-term t)) empty-store))
+  (term->redex (expand-term (make-term t))))
 
+(define (nondeterm-step tree)
+  (display tree) (newline)
+  (if (empty? (cdr tree))
+      #f
+      (cdr tree)))
+  
+(define (determ-step tree)
+  (if (empty? (cdr tree))
+      #f
+      (cadr tree)))
+  
 (define marred
   (reduction-relation Min
-    (--> p ,(macro-aware-redex-step MAMin (term p)))))
+    (--> p ,(macro-aware-redex-step MAMin (term p) 1))
+    (--> p ,(macro-aware-redex-step MAMin (term p) 2))
+    (--> p ,(macro-aware-redex-step MAMin (term p) 3))))
 
 (define-syntax-rule (test-trace t)
-  (macro-aware-traces MAMin marred (make-redex-term t))) ;make-term?
+  (macro-aware-traces MAMin marred (join (make-redex-term t) empty-store)))
 
 (define-syntax-rule (test-expand t)
   (show-term (expand-term (make-term t))))
