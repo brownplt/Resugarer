@@ -26,6 +26,7 @@
      (begin o e e ...)
      (if o e e e)
      (rec o x e)
+     (amb o e ...)
      x
      v
      (x := e))
@@ -77,6 +78,8 @@
    (if o (subs x e e_1) (subs x e e_2) (subs x e e_3))]
   [(subs x e (begin o e_1 ...))
    (begin o (subs x e e_1) ...)]
+  [(subs x e (amb o e_1 ...))
+   (amb o (subs x e e_1) ...)]
   [(subs x e (op o e_1 ...))
    (op o (subs x e e_1) ...)]
   [(subs x e (cons o e_1 e_2))
@@ -110,6 +113,10 @@
    (--> (in-hole pc_1 (begin o e_1))
         (in-hole pc_1 e_1)
         "begin-one")
+   
+   (--> (in-hole pc (amb o e_1 ... e e_2 ...))
+        (in-hole pc e)
+        "amb")
  
    (--> (in-hole pc (empty? o empty))               (in-hole pc #t))
    (--> (in-hole pc (empty? o (cons o_1 v_1 v_2)))  (in-hole pc #f))

@@ -45,6 +45,8 @@
   
   (define (term->redex t)
     (match t
+;      [(term-list os (cons 'lambda ts))
+;       (cons 'lambda (cons (list 'origins (list)) (map term->redex ts)))]
       [(term-list os (cons l ts))
        (cons l (cons (list 'origins os) (map term->redex ts)))]
       [(? atomic? t)
@@ -57,6 +59,8 @@
         (redex->term t ctx replace-vars recurse))
       (match t
         [(? symbol? t)
+;         (when (eq? t 'tail)
+;           (display (format "|~a|\n" ctx)))
          (if replace-vars
              (let* [[x (lookup-var t ctx)]]
                (if x (if recurse
@@ -69,6 +73,8 @@
              t)]
         [(? atomic? t)
          t]
+;        [(cons 'lambda (cons _ ts))
+;         (term-list (list) (cons 'lambda (map rec ts)))]
         [(cons l (cons (list 'origins os) ts))
          (term-list os (cons l (map rec ts)))]))
     
@@ -103,7 +109,7 @@
     (let [[expr->term (language-expr->term l)]
           [split (redex-language-split l)]]
       (if (not t) "END"
-          (let [[u (unexpand-term (expr->term (car (split t)) (cdr (split t)) #t))]]
+          (let [[u (unexpand-term (expr->term (car (split t)) (cdr (split t)) #t #t))]]
             (if (could-not-unexpand? u) (hidden) (term->sexpr u))))))
 
   (define-syntax-rule

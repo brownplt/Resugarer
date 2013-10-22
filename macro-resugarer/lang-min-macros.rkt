@@ -77,6 +77,12 @@
   [(Cond [^ x y])       (if x y (+ 0 0))]
   [(Cond [^ x y] z zs ...) (if x y (! Cond z zs ...))])
 
+(define-macro AmbCond
+  [(AmbCond [^ $else x])      (begin x)]
+  [(AmbCond [^ x y])          (if x y (+ 0 0))]
+  [(AmbCond [^ x y] z zs ...) (if x (amb y (! AmbCond z zs ...))
+                                    (! AmbCond z zs ...))])
+
 ;(define-macro std-Letrecs () (Let Lets Thunk Force)
 ;  [(std-Letrec [^ [^ var init] ...] body)
 ;   (Lets [^ [^ var 0] ...]
@@ -95,14 +101,15 @@
    (lambda stream
      (Cond
        [^ (eq? "" stream) #t]
-       [^ $else #f]))]
-  [(_ [^ label $-> target] ...)
+       [^ $else (begin #f)]))]
+  [(_ [^ label $-> targets ...] ...)
    (lambda stream
      (if (eq? "" stream) #f
          (Lets [^ [^ head (string-first stream)]
                   [^ tail (string-rest stream)]]
                (Cond
-                [^ (eq? label head) (! apply target tail)]
+                [^ (eq? label head)
+                   (amb (! apply targets tail) ...)]
                 ...
                 [^ $else #f]))))])
 
@@ -111,7 +118,8 @@
     [^ state $: response ...]
     ...)
    (Letrecs [^ [^ state (ProcessState response ...)] ...]
-     init-state)])
+     (lambda x (! apply init-state x)))])
+;     init-state)])
 
 (define-macro List
   [(List) empty]
@@ -143,18 +151,6 @@
                   (eq? x ""))]]
      (! apply init input))])
 
-#;(test-eval
- (Letrec run-fun
-   (RunBody)
-   (Lets [^ [^ an-Engine
-               (Engine [^ "more" $: [^ "a" $-> "more"]])]
-            [^ the-input
-               (cons "a" (cons "a" (cons "a" empty)))]]
-         (run run-fun an-Engine "more" the-input))))
-
-;(set-debug-steps! #f)
-;(set-debug-tags! #f)
-
 (test-eval (+ 1 2))
 (test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
 (test-eval (Let x 3 (+ x x)))
@@ -185,9 +181,23 @@
          [^ init $: [^ "c" $-> more]]
          [^ more $: [^ "a" $-> more]
                     [^ "d" $-> more]
+                    [^ "r" $-> end init]]
+         [^ end $:  "accept"])
+   (apply M "carcadr")))
+#;(test-eval
+ (Let M (Automaton
+         init
+         [^ init $: [^ "c" $-> more]]
+         [^ more $: [^ "a" $-> more]
+                    [^ "d" $-> more]
                     [^ "r" $-> end]]
          [^ end $:  "accept"])
    (apply M "cdad")))
+
+#;(test-trace (amb (+ 1 2) (+ 3 4) (+ 5 6)))
+#;(test-trace (AmbCond [^ #t (+ 1 2)]
+                     [^ #f (+ 3 4)]
+                     [^ #t (+ 5 6)]))
 
 ;(test-eval (Letrecs [^ [^ f (λ n (if (eq? n 0) 77 (apply f (! + 0 0))))]]
 ;                    (apply f (+ 1 2))))
