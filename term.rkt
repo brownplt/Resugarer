@@ -73,6 +73,10 @@
        (show-node 'And (show-list (map show-term xs)))]
       [(list 'automaton init cases ...)
        (show-node 'Automaton (show-symbol init) (show-list (map show-automaton-case cases)))]
+      [(list 'function (list (? symbol? vs) ...) x)
+       (show-node 'Function (show-list (map show-symbol vs)) (show-term x))]
+      [(list 'return x)
+       (show-node 'Return (show-term x))]
       ; Core
       [(? boolean? t)
        (if t (show-node 'True) (show-node 'False))]
@@ -148,6 +152,10 @@
         [(Node 'Apply (list f xs))
          (map convert (cons f xs))]
         ; Surface
+        [(Node 'Function (list vs x))
+         (list 'function (map string->symbol vs) (convert x))]
+        [(Node 'Return (list x))
+         (list 'return (convert x))]
         [(Node 'Bind (list v b))
          (list (string->symbol v) (convert b))]
         [(Node 'Let (list bs xs))

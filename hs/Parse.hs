@@ -27,7 +27,7 @@ lexer = P.makeTokenParser $ P.LanguageDef {
   P.opLetter = letter <|> digit <|> char '_',
   P.reservedNames = [rulesStr, surfaceStr, coreStr,
                      intSortStr, floatSortStr, stringSortStr,
-                     macHeadStr, macBodyStr],
+                     macHeadStr, macBodyStr, freshStr],
   P.reservedOpNames = [],
   P.caseSensitive = True
   }
@@ -74,7 +74,7 @@ compile (Module l1@(Language (Grammar v1) _)
         where getLabel (Production (Constructor l _) _) = l
     
       fillRuleInfo :: Rule -> Rule
-      fillRuleInfo (Rule p q) = Rule (fillPattInfo p) (fillPattInfo q)
+      fillRuleInfo (Rule p q fs) = Rule (fillPattInfo p) (fillPattInfo q) fs
     
       fillPattInfo :: Pattern -> Pattern
       fillPattInfo (PVar v) = PVar v
@@ -132,7 +132,7 @@ sort = intSort <|> floatSort <|> stringSort <|> sortList <|> simpleSort
 
 rules :: Parser Rules
 rules = do
-  symbol "rules"
+  symbol rulesStr
   rs <- many rule
   return (Rules rs)
 
@@ -141,8 +141,15 @@ rule = do
   p <- pattern
   symbol rewriteStr
   q <- pattern
+  fs <- many fresh
   symbol terminalStr
-  return (Rule p q)
+  return (Rule p q fs)
+
+fresh :: Parser Var
+fresh = do
+  symbol freshStr
+  f <- op
+  return (Var f)
 
 pattern :: Parser Pattern
 pattern = do

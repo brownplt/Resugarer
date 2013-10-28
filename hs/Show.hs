@@ -1,5 +1,5 @@
 module Show (rulesStr, surfaceStr, coreStr, valueStr, constrStr,
-             varStr, rewriteStr, assignStr, terminalStr,
+             varStr, rewriteStr, assignStr, terminalStr, freshStr,
              hasTypeStr, typeProdStr, typeArrowStr, transpStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
              macBodyStr, macAlienStr, macHeadStr, tagStr,
@@ -16,6 +16,7 @@ coreStr = "core"
 valueStr = "values"
 constrStr = "constructors"
 rulesStr = "rules"
+freshStr = "fresh"
 
 varStr = ""
 rewriteStr = "->"
@@ -116,8 +117,10 @@ instance Show Macro where
     spaceSep [shows m, str assignStr, braces (commaSep (map shows cs))]
 
 instance Show Rule where
-  showsPrec _ (Rule p q) =
-    spaceSep [shows p, str rewriteStr, shows q] . str terminalStr
+  showsPrec _ (Rule p q fs) =
+    spaceSep ([shows p, str rewriteStr, shows q] ++
+              (map (\(Var f) -> str freshStr . str " " . str f) fs)) .
+    str terminalStr
 
 instance Show SortName where
   showsPrec _ (SortN s) = str s

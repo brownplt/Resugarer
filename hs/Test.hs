@@ -29,7 +29,7 @@ instance Arbitrary Macro where
   arbitrary = liftM (Macro (Label "M")) (vectorOf 3 arbitrary)
 
 instance Arbitrary Rule where
-  arbitrary = liftM2 Rule arbitrary arbitrary
+  arbitrary = liftM3 Rule arbitrary arbitrary arbitrary
 
 instance Arbitrary Rules where
   arbitrary = liftM Rules mediumList
@@ -160,6 +160,7 @@ testMacroTable = Map.fromList $ [(Label "Swap", Macro (Label "Swap") [rule])]
   where
     rule = Rule (PList [(PVar (Var "x")), (PVar (Var "y"))])
                 (PList [(PVar (Var "y")), (PVar (Var "x"))])
+                []
 
 main = do
   tests "matching" [

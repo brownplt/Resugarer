@@ -71,6 +71,15 @@
                      (is-odd? 11)))
   #;(test-eval ((automaton init [init : accept]) "a"))
   
+  (test-eval (let [[a (automaton
+                       init
+                       [init : ["c" -> more]]
+                       [more : ["a" -> more]
+                               ["d" -> more]
+                               ["r" -> end]]
+                       [end : accept])]]
+               (a "cadr")))
+  
   #;(test-eval (let [[a (automaton
                        init
                        [init : ["c" -> more]]
@@ -82,12 +91,15 @@
                      (a "cddr")
                      (a "card"))))
   
-  (test-eval (+ 1 (call/cc (λ (k) (k 2)))))
-  (test-eval (+ 1 (+ 2 (+ 3 (call/cc (λ (k) (+ 4 (k (+ 5 6)) (+ 7 8)))) 9)) 10))
+  (set-show-continuations! #t)
+  (set-hide-external-calls! #f)
+ 
+  (test-eval (+ 1 (+ 2 (+ 3 (call/cc (lambda (k) (+ 4 (k (+ 5 6)) (+ 7 8)))) 9)) 10))
   (test-eval (+ 1 (call/cc (lambda (k) (+ 2 (call/cc (lambda (k2) (+ 3 (k 1729)))))))))
-  (test-eval (Let [^ [^ k (call/cc (lambda (c) c))]] (+ 2 (k (λ (x) 3)))))
-  (test-eval (+ 1 (call/cc (λ (k) (+ 2 (k 3))))))
-  (test-eval (call/cc (λ (k) (k (+ (+ 1 2) (+ 3 4))))))
-  ;(test-eval ((call/cc call/cc) (call/cc call/cc))) ;-- loops
-  (test-eval ((call/cc call/cc) (λ (x) 3)))
+  (test-eval (let [[k (call/cc (lambda (c) c))]] (+ 2 (k (lambda (x) 3)))))
+  (test-eval (+ 1 (call/cc (lambda (k) (+ 2 (k 3))))))
+  (test-eval (call/cc (lambda (k) (k (+ (+ 1 2) (+ 3 4))))))
+  (test-eval ((call/cc call/cc) (lambda (x) 3)))
+ ;(test-eval ((call/cc call/cc) (call/cc call/cc))) ;-- loops
+
 )

@@ -58,7 +58,7 @@
 
 
 (test-eval (Cps ($apply ($λ x (+ x 1)) 3)))
-#;(test-eval (Cps ($apply ($apply ($λ f ($λ x ($apply f ($apply f x))))
+(test-eval (Cps ($apply ($apply ($λ f ($λ x ($apply f ($apply f x))))
                                 ($λ x (+ x 1)))
                         (+ 1 2))))
 ;(test-eval (CpsT ($apply ($apply ($λ f ($λ x ($apply f ($apply f x))))

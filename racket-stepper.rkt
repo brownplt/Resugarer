@@ -72,13 +72,16 @@
        (if (list? x)
            (TermList os (map sexpr->term x))
            (TermAtom os (sexpr->term x)))]
-;       (TermList os (list (sexpr->term x)))]
       [(list xs ...)
        (TermList (list) (map sexpr->term xs))]
       [x x]))
   
   (define (pretty-term t [keep-tags #f])
-    (format "~v" (term->sexpr t keep-tags)))
+    (let [[str (format "~v" (term->sexpr t keep-tags))]]
+      (if (and (> (string-length str) 0)
+               (char=? (string-ref str 0) #\'))
+          (substring str 1)
+          str)))
   
   (define (reconstruct-stack x [stk $stk])
     (if (empty? stk)
@@ -105,22 +108,27 @@
               (display-skip t)
               (display-step u)))))
   
-  (define (value->term x)
+  ; TODO: It seems we would want to unexpand variables here,
+  ;       but doing so breaks everything. Why?
+  (define (value->term x [unexpand-vars #f])
+    (define (rec x) (value->term x unexpand-vars))
     (cond [(Func? x)
-           (value->term (Func-term x))]
+           (rec (Func-term x))]
           [(TermList? x)
-           (TermList (TermList-tags x) (map value->term (TermList-terms x)))]
+           (TermList (TermList-tags x) (map rec (TermList-terms x)))]
           [(Var? x)
-           (let* [[name (Var-name x)]
-                  [term (value->term (Var-value x))]
-                  [u    ((unexpand) (term->sexpr term))]]
-             (if DEBUG_VARS
-                 (TermList (list) (list name ':= term))
-                 (if (or (and HIDE_UNDEFINED (undefined? u))
-                         (CouldNotUnexpand? u))
-                     name u)))]
+           (if unexpand-vars
+               (let* [[name (Var-name x)]
+                      [term (rec (Var-value x))]
+                      [u    ((unexpand) (term->sexpr term))]]
+                 (if DEBUG_VARS
+                     (TermList (list) (list name ':= term))
+                     (if (or (and HIDE_UNDEFINED (undefined? u))
+                             (CouldNotUnexpand? u))
+                         name u)))
+               (Var-name x))]
           [(Cont? x)
-           (let [[stk (value->term (reconstruct-stack '__ (Cont-stk x)))]]
+           (let [[stk (rec (reconstruct-stack '__ (Cont-stk x)))]]
              (TermList (list) (list '*cont* stk)))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (or (object-name x) 'cont)]
@@ -180,9 +188,10 @@
                   [(args* ...) args_]
                   [extern-call* (annot/extern-call func_ args_)]]
       (if HIDE_EXTERNAL_CALLS
-          #'(if (Func? func*)
-                (func* args* ...)
-                extern-call*)
+          #'(cond [(Func? func*)
+                   (func* args* ...)]
+                  [else
+                   extern-call*])
           #'(func* args* ...))))
   
   
@@ -351,7 +360,7 @@
            #'(let [[xv* x*]]
                ($emit term*)
                (set! v* xv*))))]
-
+      
       ; (f xs ...)
       [(TermList os_ (list f_ xs_ ...))
        (let [[xvs_ (map (λ (_) (with-syntax [[(v) (generate-temporaries #'(x))]] #'v)) xs_)]]
@@ -406,7 +415,7 @@
   
   (define (receive-response in err)
     (let [[response (read-line in)]]
-      (when DEBUG_COMMUNICATION (display response) (newline))
+      (when DEBUG_COMMUNICATION (display response) (newline) (newline))
       (cond [(eof-object? response)
              (display (read-port err)) (newline)
              (fail "Received EOF")]
