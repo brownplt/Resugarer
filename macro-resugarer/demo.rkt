@@ -60,6 +60,6 @@
          [^ init $: [^ "c" $-> more]]
          [^ more $: [^ "a" $-> more]
                     [^ "d" $-> more]
-                    [^ "r" $-> end]]
+                    [^ "r" $-> end init]]
          [^ end $:  "accept"])
    (apply M "carcadr")))
