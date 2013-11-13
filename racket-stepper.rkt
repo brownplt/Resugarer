@@ -31,6 +31,7 @@
   (define-setting DEBUG_STEPS         set-debug-steps!         #f)
   (define-setting DEBUG_TAGS          set-debug-tags!          #f)
   (define-setting HIDE_UNDEFINED      set-hide-undefined!      #t)
+  (define-setting SILENCE             set-silence!             #f)
   
   
   
@@ -97,6 +98,7 @@
     (when DEBUG_STEPS (newline)))
   
   (define (emit x [id #f])
+   (if SILENCE (void)
     (if id
         (let* [[name (Var-name x)]
                [term (value->term (Var-value x))]
@@ -106,7 +108,7 @@
                [u ((unexpand) (term->sexpr t))]]
           (if (CouldNotUnexpand? u)
               (display-skip t)
-              (display-step u)))))
+              (display-step u))))))
   
   ; TODO: It seems we would want to unexpand variables here,
   ;       but doing so breaks everything. Why?

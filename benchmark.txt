@@ -1,0 +1,21 @@
+Native results from benchmark.rkt:
+
+
+WITH RESUGARING:
+
+Big-stack factorial:
+cpu time: 420 real time: 465 gc time: 120
+
+Small-stack factorial:
+cpu time: 332 real time: 336 gc time: 68
+
+
+WITHOUT RESUGARING:
+
+Big-stack factorial:
+cpu time: 376 real time: 375 gc time: 136
+ratio: 112%
+
+Small-stack factorial:
+cpu time: 296 real time: 300 gc time: 48
+ratio: 112%
