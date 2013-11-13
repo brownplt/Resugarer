@@ -4,21 +4,23 @@
 (require "resugar-redex.rkt")
 (require "lang-min.rkt")
 
+(set-debug-steps! #f)
+
+
+(define-macro Lets
+  [(Lets [^ [^ x e]] b)
+   (apply (lambda x b) e)]
+  [(Lets [^ [^ x e] y ys ...] b)
+   (apply (lambda x (! Lets [^ y ys ...] b)) e)])
 
 (define-macro Let
-  [(Let [^ [^ x e]] b)
-   (apply (lambda x b) e)]
-  [(Let [^ [^ x e] y ys ...] b)
-   (apply (lambda x (! Let [^ y ys ...] b)) e)])
-
-(define-macro Let1
-  [(Let1 x e b)
+  [(Let x e b)
    (apply (lambda x b) e)])
 
 (define-macro Letrec
   [(Letrec [^ [^ x e] ...] b)
-   (Let [^ [^ x 0] ...]
-        (begin (set! x e) ... b))])
+   (Lets [^ [^ x 0] ...]
+         (begin (set! x e) ... b))])
 
 (define-macro Cond
   [(Cond [^ $else x])   (begin x)] ; begin required so that a step is shown!
@@ -31,16 +33,16 @@
      (Cond
        [^ (eq? "" stream) #t]
        [^ $else (begin #f)]))]
-  [(_ [^ label $-> targets ...] ...)
+  [(_ [^ label $-> target] ...)
    (lambda stream
      (if (eq? "" stream) #f
-         (Let [^ [^ head (string-first stream)]
+         (Lets [^ [^ head (string-first stream)]
                  [^ tail (string-rest stream)]]
               (Cond
                [^ (eq? label head)
-                  (amb (! apply targets tail) ...)]
+                  (! apply target tail)]
                ...
-               [^ $else #f]))))])
+               [^ $else (begin #f)]))))])
 
 (define-macro Automaton
   [(_ init-state
@@ -55,11 +57,11 @@
 #;(test-trace (+ 1 (Cond (^ (eq? 1 2) (+ 1 2)) (^ (eq? 1 3) (+ 3 4)))))
 
 (test-trace
- (Let1 M (Automaton
+ (Let M (Automaton
          init
          [^ init $: [^ "c" $-> more]]
          [^ more $: [^ "a" $-> more]
                     [^ "d" $-> more]
-                    [^ "r" $-> end init]]
+                    [^ "r" $-> end]]
          [^ end $:  "accept"])
-   (apply M "carcadr")))
+   (apply M "cadr")))
