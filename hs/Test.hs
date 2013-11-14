@@ -8,7 +8,7 @@ import Parse
 import Debug.Trace (trace)
 import Prelude hiding (const)
 import Test.QuickCheck hiding (label)
-import Control.Monad (liftM, liftM2, liftM3)
+import Control.Monad (liftM, liftM2, liftM3, liftM4)
 import Data.Maybe (isJust)
 import Control.Exception (assert)
 import qualified Data.Map as Map
@@ -29,7 +29,8 @@ instance Arbitrary Macro where
   arbitrary = liftM (Macro (Label "M")) (vectorOf 3 arbitrary)
 
 instance Arbitrary Rule where
-  arbitrary = liftM3 Rule arbitrary arbitrary arbitrary
+  arbitrary = liftM4 Rule arbitrary arbitrary arbitrary
+                          (return (RuleFlags False))
 
 instance Arbitrary Rules where
   arbitrary = liftM Rules mediumList
@@ -161,6 +162,7 @@ testMacroTable = Map.fromList $ [(Label "Swap", Macro (Label "Swap") [rule])]
     rule = Rule (PList [(PVar (Var "x")), (PVar (Var "y"))])
                 (PList [(PVar (Var "y")), (PVar (Var "x"))])
                 []
+                (RuleFlags False)
 
 main = do
   tests "matching" [

@@ -9,6 +9,7 @@ import Control.Monad (liftM, liftM2, zipWithM, when, replicateM)
 import System.Random (randomIO)
 import System.IO.Unsafe (unsafePerformIO) -- it's only to generate nonces, I swear!
 import Data.Char (chr)
+import Debug.Trace (trace)
 
 
 newtype Var = Var String deriving (Eq, Ord)
@@ -17,8 +18,12 @@ newtype Label = Label String deriving (Eq, Ord)
 type MacroTable = Map Label Macro
 
 data Macro = Macro Label [Rule]
+            
+data Rule = Rule Pattern Pattern [Var] RuleFlags
+            deriving (Eq) -- from, to, fresh vars
 
-data Rule = Rule Pattern Pattern [Var] deriving (Eq) -- from, to, fresh vars
+data RuleFlags = RuleFlags Bool -- overlap override
+                 deriving (Eq)
 
 data Info = Info Bool Bool -- transp marked, always transparent
 noInfo = Info False False
@@ -69,7 +74,7 @@ data UnifyFailure = UnifyFailure Pattern Pattern
 
 -- This means something really went wrong;
 -- should never occur on good-faith user input.
-data ResugarError = NoMatchingCase Label Term
+data ResugarError = NoMatchingCase Label Term [Rule]
                   | NoSuchMacro Label
                   | NoSuchCase Label Int
                   | UnboundSubsVar Var
@@ -269,10 +274,10 @@ addFreshVars (Var f:fs) env =
 expandMacro :: Macro -> Term -> Either ResugarFailure (Int, Term)
 expandMacro (Macro name cs) t = expandCases 0 cs
   where
-    expandCases _ [] = Left (ResugarError (NoMatchingCase name t))
+    expandCases _ [] = Left (ResugarError (NoMatchingCase name t cs))
     expandCases i (c:cs) = eitherOr (expandCase i c) (expandCases (i + 1) cs)
     
-    expandCase i (Rule p p' fs) = do
+    expandCase i (Rule p p' fs _) = do
       e <- match t (bodyWrap False p)
       t <- subs (addFreshVars fs e) (bodyWrap True p')
       return (i, t)
@@ -283,7 +288,7 @@ unexpandMacro (Macro l cs) (i, t') t =
   then Left (ResugarError (NoSuchCase l i))
   else unexpandCase (cs !! i)
     where
-      unexpandCase (Rule p p' _) = do
+      unexpandCase (Rule p p' _ _) = do
         e <- match t (bodyWrap False p)
         e' <- match t' (bodyWrap True p')
         subs (composeEnvs e e') p
@@ -301,15 +306,18 @@ wellFormedMacro (Macro l cs) = do
   mapM_ disjointCases (allDistinctPairs cs)
   mapM_ (wellFormedCase l) cs
   where
-    disjointCases ((Rule p _ _), (Rule q _ _)) = case unify p q of
-      Left _ -> return ()
-      Right r -> Left (CasesOverlap l p q r)
+    disjointCases ((Rule p _ _ (RuleFlags True)), _) =
+      return ()
+    disjointCases ((Rule p _ _ _), (Rule q _ _ _)) =
+      case unify p q of
+        Left _ -> return ()
+        Right r -> Left (CasesOverlap l p q r)
 
 wellFormedCase :: Label -> Rule -> Either WFError ()
-wellFormedCase l (Rule p q fs) = do
+wellFormedCase l (Rule p q fs _) = do
   checkDuplicateVar p
   -- TODO: figure out how to handle dup vars systematically
-  --  checkDuplicateVar q
+  -- checkDuplicateVar q
   wellFormedPattern l p
   wellFormedPattern l q
   varSubset p q
@@ -404,3 +412,4 @@ mapWithKeyM :: (Monad m, Ord k) => (k -> a -> m b) -> Map k a -> m (Map k b)
 mapWithKeyM f m = liftM Map.fromList (mapM f' (Map.toList m))
   where
     f' (k, x) = f k x >>= return . (\x -> (k, x))
+

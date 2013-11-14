@@ -40,7 +40,6 @@ stringSortStr = "String"
 
 {- Printing -}
 
-
 str = showString
 
 sep :: String -> [ShowS] -> ShowS
@@ -117,7 +116,7 @@ instance Show Macro where
     spaceSep [shows m, str assignStr, braces (commaSep (map shows cs))]
 
 instance Show Rule where
-  showsPrec _ (Rule p q fs) =
+  showsPrec _ (Rule p q fs _) =
     spaceSep ([shows p, str rewriteStr, shows q] ++
               (map (\(Var f) -> str freshStr . str " " . str f) fs)) .
     str terminalStr
@@ -160,9 +159,10 @@ instance Show Module where
     newlineSep [str coreStr, shows l1, str surfaceStr, shows l2, shows rs]
 
 instance Show ResugarError where
-  showsPrec _ (NoMatchingCase l t) =
+  showsPrec _ (NoMatchingCase l t cs) =
     str "No matching case for constructor " . shows l .
-    str " with term " . shows t
+    str " with term " . shows t .
+    str ". The relevant rules are: " . shows (Rules cs)
   showsPrec _ (NoSuchMacro l) =
     str "The label " . shows l . str (" appears in a core term tag," ++
       "but there is no corresponding desugaring rule.")
