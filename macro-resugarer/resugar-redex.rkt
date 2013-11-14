@@ -1,6 +1,7 @@
 (module resugar-redex racket
   (require redex)
   (require "resugar.rkt")
+  (require "utility.rkt")
   (provide
    make-redex-language
    expand-term show-term
@@ -105,12 +106,23 @@
 
   (define-struct hidden ())
   
+  ; Hard code some reasonable color defaults
+  (light-pen-color "dim gray")
+  
   (define (format-term-for-traces l t)
+    (define (make-pretty t)
+      (cond [(symbol-prefix? "$" t)
+             (string->symbol (strip-prefix "$" (symbol->string t)))]
+            [(and (list? t) (eq? '^ (car t)))
+             (map make-pretty (cdr t))]
+            [(list? t)
+             (map make-pretty t)]
+            [else t]))
     (let [[expr->term (language-expr->term l)]
           [split (redex-language-split l)]]
       (if (not t) "END"
           (let [[u (unexpand-term (expr->term (car (split t)) (cdr (split t)) #t #t))]]
-            (if (could-not-unexpand? u) (hidden) (term->sexpr u))))))
+            (if (could-not-unexpand? u) (hidden) (make-pretty (term->sexpr u)))))))
 
   (define-syntax-rule
     (macro-aware-traces l red t rest ...)
