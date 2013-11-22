@@ -13,8 +13,6 @@ import Pattern
 import Grammar
 import Show
 
-import Debug.Trace (trace)
-
 
 lexer = P.makeTokenParser $ P.LanguageDef {
   P.commentStart = "(*",
@@ -74,7 +72,8 @@ compile (Module l1@(Language (Grammar v1) _)
         where getLabel (Production (Constructor l _) _) = l
     
       fillRuleInfo :: Rule -> Rule
-      fillRuleInfo (Rule p q fs) = Rule (fillPattInfo p) (fillPattInfo q) fs
+      fillRuleInfo (Rule p q fs i) =
+        Rule (fillPattInfo p) (fillPattInfo q) fs i
     
       fillPattInfo :: Pattern -> Pattern
       fillPattInfo (PVar v) = PVar v
@@ -142,8 +141,9 @@ rule = do
   symbol rewriteStr
   q <- pattern
   fs <- many fresh
+  overlapFlag <- optionBool (symbol "unsafe_overlap")
   symbol terminalStr
-  return (Rule p q fs)
+  return (Rule p q fs (RuleFlags overlapFlag))
 
 fresh :: Parser Var
 fresh = do
@@ -166,11 +166,10 @@ pattern = do
         pConst = liftM PConst const
         pList = brackets pListElems
         pNode = do
-          z <- optionMaybe (symbol transpStr)
+          transp <- optionBool (symbol transpStr)
           l <- label
           args <- optionMaybe (parens (commaSep pattern))
           let nodeArgs = maybe [] id args
-              transp = maybe False (\x -> True) z
           return (PNode (Info transp False) l nodeArgs) -- v filled in later
         pListElems = do
           xs <- commaSep pattern
@@ -237,3 +236,8 @@ origin = origBody <|> origAlien <|> origHead
 
 label :: Parser Label
 label = liftM Label iden
+
+optionBool :: Parser a -> Parser Bool
+optionBool p = do
+  m <- optionMaybe p
+  return (maybe False (\_ -> True) m)

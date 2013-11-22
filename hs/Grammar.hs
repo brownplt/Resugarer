@@ -62,7 +62,7 @@ rulesToMacros :: Rules -> MacroTable
 rulesToMacros (Rules rs) = f (reverse rs) Map.empty
   where
     f [] ms = ms
-    f (c@(Rule (PNode _ l _) _ _) : rs) ms =
+    f (c@(Rule (PNode _ l _) _ _ _) : rs) ms =
       let ms' = case Map.lookup l ms of
             Nothing ->
               Map.insert l (Macro l [c]) ms
@@ -136,7 +136,7 @@ sortCheckRules g (Rules rs) = mapM_ checkRule rs
       Right () -> return ()
 
 sortCheckRule :: ProductionTable -> Rule -> Either SortError ()
-sortCheckRule g (Rule p q fs) = do
+sortCheckRule g rule@(Rule p q fs _) = do
   case p of
     PNode _ l _ -> do
       case Map.lookup l g of
@@ -147,7 +147,7 @@ sortCheckRule g (Rule p q fs) = do
           unify s (SortName s0)
           unify s' (SortName s0)
           return ()
-    _ -> Left (InvalidRule (Rule p q fs))
+    _ -> Left (InvalidRule rule)
 
 sortInfer :: ProductionTable -> Pattern -> Either SortError Sort
 -- Infer the sort of a pattern.

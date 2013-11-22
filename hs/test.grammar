@@ -10,4 +10,4 @@ surface
     Inc : Expr -> Expr;
 rules
   Inc(n) -> Plus(n, CNum(1));
-  SNum(n) -> CNum(n);
+  SNum(n) -> CNum(n) fresh unused;
