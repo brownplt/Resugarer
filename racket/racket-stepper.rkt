@@ -16,6 +16,8 @@
   
   ; call/cc must be spelt call/cc, and not call-with-current-continuation
   
+  (define resugarer-dir "../resugarer/Resugarer")
+  
   (define-struct Var (name value) #:transparent)
   (define-struct Func (func term)
     #:property prop:procedure
@@ -433,7 +435,7 @@
     (begin
       (current-locale "en_US.UTF-8") ; How to make Racket read in unicode?
       (let-values [[(resugarer in out err)
-                    (subprocess #f #f #f "hs/Resugarer" "racket.grammar")]]
+                    (subprocess #f #f #f resugarer-dir "racket.grammar")]]
         (parameterize
             [[expand (λ (t)
                        (send-command (format "desugar Expr ~a\n" (show-term t)) out)
