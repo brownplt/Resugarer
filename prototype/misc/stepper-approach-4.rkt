@@ -17,24 +17,7 @@
   (set! $stk (cons x (cdr $stk)))
   (when (not (empty? (cdr $stk)))
     (vector-set! (cadr $stk) (car $path) x)))
-;  (when (vector? (car $stk))
-;    (vector-set! (car $stk) (car $path) x)))
-#|  (set! $term x)
-  (when (not (empty? $stk))
-    (vector-set! (car $stk) (car $path) x)))|#
 
-
-#;(define $path (list))
-#;(define ($push! n) (set! $path (cons n $path)))
-#;(define ($pop!) (set! $path (cdr $path)))
-
-#;(define ($alter! x [term $term] [path (reverse $path)])
-  (cond [(empty? path)
-         ($set-term! x)]
-        [(eq? (length path) 1)
-         (vector-set! term (car path) x)]
-        [else
-         ($alter! x [vector-ref term (car path)] (cdr path))]))
 
 (define ($emit)
   (display (format "~a\n" (show (last $stk)))))

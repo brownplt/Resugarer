@@ -1,21 +1,21 @@
 #lang racket
 
-(require "term.rkt")
+(require "convert.rkt")
 (require "racket-stepper.rkt")
 
 ; See hs/racket.grammar for sugar definitions.
 
 (set-debug-communication! #f)
 (set-show-continuations! #t)
-(set-hide-external-calls! #f)
+(set-hide-external-calls! #t)
 (set-debug-steps! #f)
 
 
-#;(with-resugaring
+(with-resugaring
  
   (test-eval (or (and #t #f) #f))
  
-  (test-eval (let [[xor (lambda (x y) (or (and x y) (and (not x) (not y))))]]
+  #;(test-eval (let [[xor (lambda (x y) (or (and x y) (and (not x) (not y))))]]
                (xor (xor #f #t) (xor #t #f))))
  
   (test-eval (let [[x (+ 1 2)] [y (+ 3 4)]] (+ x y)))

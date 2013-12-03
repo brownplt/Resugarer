@@ -1,5 +1,4 @@
 module Parse where
--- TODO: Export only (parseModule, parseTerm)
 
 import Prelude hiding (const)
 import Text.ParserCombinators.Parsec hiding (label)

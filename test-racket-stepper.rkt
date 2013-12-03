@@ -1,12 +1,15 @@
 #lang racket
 
-(require "term.rkt")
+(require "convert.rkt")
 (require "racket-stepper.rkt")
 
 (set-debug-communication! #f)
 (set-debug-steps! #f)
 
-(without-resugaring
+
+;;; Core stepper tests ;;;
+
+#;(without-resugaring
  (test-eval "blah")
  (test-eval (lambda (x) x))
  (test-eval (+ (+ 1 2) 3))
@@ -15,7 +18,10 @@
  (test-eval ((lambda (x) (begin x)) 1))
  (test-eval ((lambda (x) (if (set! x (+ x 1)) (cons x x) x)) 3)))
 
-(with-resugaring
+
+;;; Sugar-free tests ;;;
+
+#;(with-resugaring
  (test-eval "blah")
  (test-eval (lambda (x) x))
  (test-eval 3)
@@ -41,7 +47,12 @@
   (test-eval ((lambda (x) (if (set! x (+ x 1)) (cons x x) x)) 3))
   (test-eval ((lambda (x) (begin (set! x (+ x 1)) (+ x 1))) 3))
   (test-eval ((lambda (f) (begin (set! f (lambda (x) x)) (f 4))) 3))
-  
+)
+
+
+;;; Various macros ;;;
+
+#;(with-resugaring
   (test-eval (inc 3))
   (test-eval (inc (inc 3)))
   (test-eval (inc (inc (inc 3))))
@@ -90,7 +101,12 @@
                (list (a "cadr")
                      (a "cddr")
                      (a "card"))))
-  
+)
+
+
+;;; call/cc ;;;
+
+#;(with-resugaring
   (set-show-continuations! #t)
   (set-hide-external-calls! #f)
  
@@ -101,5 +117,19 @@
   (test-eval (call/cc (lambda (k) (k (+ (+ 1 2) (+ 3 4))))))
   (test-eval ((call/cc call/cc) (lambda (x) 3)))
  ;(test-eval ((call/cc call/cc) (call/cc call/cc))) ;-- loops
+)
 
+
+;;; CPS ;;;
+
+(with-resugaring
+  (set-unexpand-vars! #t)
+  (test-eval ((cps (((lambda (f) (lambda (x) (f (f x))))
+                     (lambda (x) (+ x 1)))
+                    (+ 1 2)))
+              (lambda (result) result)))
+  (test-eval ((cps ((lambda (x) (+ x 1)) 3))
+              (lambda (result) result)))
+  (test-eval ((cps (((lambda (x) (lambda (y) (+ x y))) 1) 2))
+              (lambda (result) result)))
 )

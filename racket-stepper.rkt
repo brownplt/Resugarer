@@ -1,9 +1,9 @@
 (module racket-stepper racket
   (provide (all-defined-out))
   ;(provide test-eval profile-eval test-term expand unexpand)
-  (require "data.rkt")
-  (require "utility.rkt")
   (require "term.rkt")
+  (require "utility.rkt")
+  (require "convert.rkt")
   (require profile)
   
   (define expand (make-parameter #f))
@@ -32,6 +32,7 @@
   (define-setting DEBUG_TAGS          set-debug-tags!          #f)
   (define-setting HIDE_UNDEFINED      set-hide-undefined!      #t)
   (define-setting SILENCE             set-silence!             #f)
+  (define-setting UNEXPAND_VARS       set-unexpand-vars!       #f)
   
   
   
@@ -112,14 +113,14 @@
   
   ; TODO: It seems we would want to unexpand variables here,
   ;       but doing so breaks everything. Why?
-  (define (value->term x [unexpand-vars #f])
-    (define (rec x) (value->term x unexpand-vars))
+  (define (value->term x)
+    (define (rec x) (value->term x))
     (cond [(Func? x)
            (rec (Func-term x))]
           [(TermList? x)
            (TermList (TermList-tags x) (map rec (TermList-terms x)))]
           [(Var? x)
-           (if unexpand-vars
+           (if UNEXPAND_VARS
                (let* [[name (Var-name x)]
                       [term (rec (Var-value x))]
                       [u    ((unexpand) (term->sexpr term))]]

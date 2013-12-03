@@ -239,8 +239,28 @@ unify (PConst c)   (PConst c')       | c == c' = return (PConst c)
 unify (PVar v)     p                           = return p
 unify p            (PVar v)                    = return p
 unify (PTag o p)   (PTag o' p')      | o == o' = liftM (PTag o) (unify p p')
-unify (PRep ps p)  (PRep ps' p')              = undefined
-unify (PNode i l ps) (PNode _ l' ps')    | l == l' && length ps == length ps'
+unify (PList ps)   (PList qs)        | length ps == length qs
+  = liftM PList (zipWithM unify ps qs)
+unify (PList ps)   (PRep qs q)       | length qs <= length ps = do
+  head <- zipWithM unify (take (length qs) ps) qs
+  tail <- zipWithM unify (drop (length qs) ps) (repeat q)
+  return (PRep (head ++ tail) q)
+unify (PRep ps p)  (PList qs)        | length ps <= length qs = do
+  head <- zipWithM unify ps         (take (length ps) qs)
+  tail <- zipWithM unify (repeat p) (drop (length ps) qs)
+  return (PRep (head ++ tail) p)
+unify (PRep ps p) (PRep qs q)        | length ps <= length qs = do
+  head <- zipWithM unify ps (take (length ps) qs)
+  midd <- zipWithM unify (repeat p) (drop (length ps) qs)
+  tail <- unify p q
+  return (PRep (head ++ midd) tail)
+unify (PRep ps p) (PRep qs q)        | length ps > length qs = do
+  head <- zipWithM unify (take (length qs) ps) qs
+  midd <- zipWithM unify (drop (length qs) ps) (repeat q)
+  tail <- unify p q
+  return (PRep (head ++ midd) tail)
+unify (PRep ps p)  (PRep ps' p')               = error "unify: "
+unify (PNode i l ps) (PNode _ l' ps') | l == l' && length ps == length ps'
   = liftM (PNode i l) (zipWithM unify ps ps')
 unify p q = Left (UnifyFailure p q)
 
@@ -248,7 +268,15 @@ subsumed :: Pattern -> Pattern -> Bool
 subsumed _            (PVar _)                 = True
 subsumed (PConst c)   (PConst c')    | c == c' = True
 subsumed (PTag o p)   (PTag o' p')   | o == o' = subsumed p p'
-subsumed (PRep ps p)  (PRep ps' p')            = undefined
+subsumed (PList ps)   (PList qs)     | length ps == length qs
+  = and (zipWith subsumed ps qs)
+subsumed (PList ps) (PRep qs q)      | length ps >= length qs
+  = and (zipWith subsumed (take (length qs) ps) qs) &&
+    and (zipWith subsumed (drop (length qs) ps) (repeat q))
+subsumed (PRep ps p)  (PRep qs q)    | length ps >= length qs
+  = and (zipWith subsumed (take (length qs) ps) qs) &&
+    and (zipWith subsumed (drop (length qs) ps) (repeat q)) &&
+    subsumed p q
 subsumed (PNode _ l ps) (PNode _ l' ps') | l == l' && length ps == length ps'
   = and (zipWith subsumed ps ps')
 subsumed _            _                        = False

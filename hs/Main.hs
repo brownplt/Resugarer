@@ -3,7 +3,7 @@ module Main where
 
 import Pattern
 import Grammar
-import Parse
+import Parse (parseModule, parseTerm)
 import Show
 #if __GLASGOW_HASKELL__ >= 700
 import System.Environment
@@ -17,7 +17,6 @@ import Data.List (stripPrefix, span)
 {- TODO:
  -   proper arg parsing
  -   pre-compute bodyWrap
- -   hook up wf checks
  -   check production table for duplicates
  -   extend model to handle duplicate atomic vars
  -}
@@ -50,7 +49,7 @@ getCommand line =
 readTerm str (CompiledLanguage g) sn = do
   case parseTerm "(input)" str of
     Left err -> do
-      problem ("invalid term" ++ show err)
+      problem ("invalid term: " ++ show err)
       return Nothing
     Right t -> case termConforms g (SortName sn) t of
       Right () -> return (Just t)

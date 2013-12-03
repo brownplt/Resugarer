@@ -51,6 +51,8 @@ surface
     Automaton : String * [AutomatonCondition] -> Expr;
     Function : [String] * Expr -> Expr;
     Return : Expr -> Expr;
+    CpsApp : Expr * Expr * String -> Expr;
+    Cps : Expr -> Expr;
 
 
 rules
@@ -98,3 +100,29 @@ rules
     Let([Bind(res, x)],
         [Apply(Id("%RETURN"), [Id(res)])])
     fresh res;
+
+  CpsApp(x, y, k) ->
+    Apply(Cps(x),
+      [Lambda([m],
+        Apply(Cps(y),
+          [Lambda([n],
+            Apply(Id(m),
+              [Id(n), Lambda([a], Apply(Id(k), [Id(a)]))]))]))])
+  fresh m
+  fresh n
+  fresh a;
+
+  Cps(Lambda([x], y)) ->  # Only single argument funs for now
+    Lambda([k],
+      Apply(Id(k),
+        [Lambda([x, k],
+           Apply(Cps(y), [Lambda([m], Apply(Id(k), [Id(m)]))]))]))
+  fresh k
+  fresh m
+  unsafe_overlap;
+
+  Cps(Apply(x, [y])) ->
+    Lambda(["*cont*"], !CpsApp(x, y, "*cont*"))
+  unsafe_overlap;
+
+  Cps(x) -> Lambda(["*cont*"], !Apply(Id("*cont*"), [x]));
