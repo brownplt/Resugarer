@@ -2,7 +2,7 @@ module Show (rulesStr, surfaceStr, coreStr, valueStr, constrStr,
              varStr, rewriteStr, assignStr, terminalStr, freshStr,
              hasTypeStr, typeProdStr, typeArrowStr, transpStr,
              intSortStr, floatSortStr, stringSortStr, repStr,
-             macBodyStr, macAlienStr, macHeadStr, tagStr,
+             macBodyStr, macTranspBodyStr, macAlienStr, macHeadStr, tagStr,
              showTerm) where
 
 import Pattern
@@ -29,6 +29,7 @@ repStr = "..."
 transpStr = "!"
 
 macBodyStr = "Body"
+macTranspBodyStr = "!Body"
 macHeadStr = "Head"
 macAlienStr = "Alien"
 tagStr = "Tag"
@@ -93,6 +94,7 @@ showOrigin z (MacHead m i t) =
   str macHeadStr . parens (commaSep [shows m, shows i, showTerm z t])
 showOrigin _ MacAlien = str macAlienStr
 showOrigin _ MacBody = str macBodyStr
+showOrigin _ MacTranspBody = str macTranspBodyStr
 
 instance Show Term where
   showsPrec _ t = showTerm True t

@@ -51,6 +51,7 @@ surface
     Automaton : String * [AutomatonCondition] -> Expr;
     Function : [String] * Expr -> Expr;
     Return : Expr -> Expr;
+    TranspTest : String * Expr -> Expr;
 
 
 rules
@@ -92,6 +93,9 @@ rules
     Letrec([Bind(state, ProcessState([response ...])) ...],
            [Lambda(["x"], !Apply(Id(init_state), [Id("x")]))]);
 
+  TranspTest(v, x) ->
+    Apply(Id("*"), [!Let([Bind(v, Num("1"))], [x]), Num("2")]);
+    
   Function(args, body) ->
     Lambda(args, Apply(Id("call/cc"), [Lambda(["%RETURN"], body)]));
   Return(x) ->

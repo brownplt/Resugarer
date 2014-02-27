@@ -90,6 +90,7 @@
                (list (a "cadr")
                      (a "cddr")
                      (a "card"))))
+  (test-eval (begin (transptest x (let ((y 1)) y))))
   
   (set-show-continuations! #t)
   (set-hide-external-calls! #f)

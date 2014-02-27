@@ -42,6 +42,7 @@ data Term =
 data Origin =
     MacHead Label Int Term
   | MacBody
+  | MacTranspBody
   | MacAlien
 
 data Const =
@@ -55,6 +56,7 @@ instance Eq Info where
 
 instance Eq Origin where
   MacBody == MacBody = True
+  MacTranspBody == MacTranspBody = True
   MacHead m _ _ == MacHead m' _ _ = m == m'
   _ == _ = False
 
@@ -142,7 +144,7 @@ bodyWrap z p = wrap p
     
     opacify :: Bool -> Pattern -> Pattern
     opacify z n@(PNode (Info _ True) _ _) = n -- never, ever tag these nodes
-    opacify z p = if z then PTag MacBody p else p
+    opacify z p = PTag (if z then MacBody else MacTranspBody) p
 
 
 {- Matching -}
@@ -273,7 +275,7 @@ expandMacro (Macro name cs) t = expandCases 0 cs
     expandCases i (c:cs) = eitherOr (expandCase i c) (expandCases (i + 1) cs)
     
     expandCase i (Rule p p' fs) = do
-      e <- match t (bodyWrap False p)
+      e <- match t p -- (bodyWrap False p) -- no good reason for LHS !s
       t <- subs (addFreshVars fs e) (bodyWrap True p')
       return (i, t)
 
@@ -284,7 +286,7 @@ unexpandMacro (Macro l cs) (i, t') t =
   else unexpandCase (cs !! i)
     where
       unexpandCase (Rule p p' _) = do
-        e <- match t (bodyWrap False p)
+        e <- match t p -- (bodyWrap False p)
         e' <- match t' (bodyWrap True p')
         subs (composeEnvs e e') p
 
@@ -348,19 +350,26 @@ expand ms t@(TNode l ts) =
     Just m -> do
       (i, t') <- expandMacro m t
       expand ms (TTag (MacHead l i (TNode l ts)) t')
- 
+
 unexpand :: MacroTable -> Term -> Either ResugarFailure Term
 unexpand ms t = do
   t' <- rec t
   if unlittered t'
-    then return t'
+    then return (stripTags t')
     else Left TermIsOpaque
   where
     unlittered :: Term -> Bool
     unlittered (TConst c) = True
     unlittered (TList ts) = and (map unlittered ts)
     unlittered (TNode _ ts) = and (map unlittered ts)
+    unlittered (TTag MacTranspBody t) = unlittered t
     unlittered (TTag _ _) = False
+    
+    stripTags :: Term -> Term
+    stripTags (TConst c) = TConst c
+    stripTags (TList ts) = TList (map stripTags ts)
+    stripTags (TNode l ts) = TNode l (map stripTags ts)
+    stripTags (TTag _ t) = stripTags t
     
     rec :: Term -> Either ResugarFailure Term
     rec (TConst c) = return (TConst c)

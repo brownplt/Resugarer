@@ -220,9 +220,10 @@ sortName :: Parser SortName
 sortName = liftM SortN iden
 
 origin :: Parser Origin
-origin = origBody <|> origAlien <|> origHead
+origin = origBody <|> origTransp <|> origAlien <|> origHead
   where
     origBody = reservedOp macBodyStr >> return MacBody
+    origTransp = reservedOp macTranspBodyStr >> return MacTranspBody
     origAlien = reservedOp macAlienStr >> return MacAlien
     origHead = do
       symbol macHeadStr

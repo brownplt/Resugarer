@@ -32,6 +32,8 @@
             (parens (comma-sep (list (symbol->string m) (number->string c) (show-term q)))))]
         [(MacBody)
          "Body"]
+        [(MacTranspBody)
+         "!Body"]
         [(Alien) ; Not yet supported by Resugarer
          "Alien"]))
     (define (show-list xs)
@@ -73,6 +75,8 @@
        (show-node 'And (show-list (map show-term xs)))]
       [(list 'automaton init cases ...)
        (show-node 'Automaton (show-symbol init) (show-list (map show-automaton-case cases)))]
+      [(list 'transptest v x)
+       (show-node 'TranspTest (show-symbol v) (show-term x))]
       [(list 'function (list (? symbol? vs) ...) x)
        (show-node 'Function (show-list (map show-symbol vs)) (show-term x))]
       [(list 'return x)
@@ -115,6 +119,7 @@
       (match x
         [(? string? x)       (strip-quotes x)]
         [`(tag "Body")       (MacBody)]
+        [`(tag "!Body")      (MacTranspBody)]
         [`(tag "Alien")      (Alien)]
         [`(tag "Head" ,_ ,l ,_ ,i ,_ ,t ,_)
                              (MacHead (string->symbol l) (string->number i) (ast->term t))]
@@ -127,6 +132,7 @@
     (define (convert-origin o)
       (match o
         [(MacBody) (MacBody)]
+        [(MacTranspBody) (MacTranspBody)]
         [(MacHead m i t) (MacHead m i (convert t))]
         [(Alien) (Alien)]))
     (define (convert t)
@@ -167,7 +173,7 @@
         [(Node 'CondCase (list c x))
          (list (convert c) (convert x))]
         [(Node 'Cond (list xs e))
-         (cons 'cond (append (map convert xs) (list 'else (convert e))))]
+         (cons 'cond (append (map convert xs) (list (list 'else (convert e)))))]
         [(Node 'Inc (list x))
          (list 'inc (convert x))]
         [(Node 'Or (list xs))
@@ -184,6 +190,8 @@
          (map convert xs)] ;??
         [(Node 'Automaton (list init cases))
          (cons 'automaton (cons (string->symbol init) (map convert cases)))]
+        [(Node 'TranspTest (list v x))
+         (list 'transptest (string->symbol v) (convert x))]
     ; Value
         [(Node 'Value (list x))
          (deserialize (read (open-input-string x)))]
@@ -215,7 +223,7 @@
          "\"")
         (token 'STRING lexeme)] ; escaping?
        ;; tags
-       [(union "Head" "Body" "Alien")
+       [(union "Head" "Body" "!Body" "Alien")
         (token lexeme lexeme)]
        ;; brackets
        [(union "[" "]" "{" "}" "(" ")" ",")
@@ -244,7 +252,7 @@
   (test-conversion `(let [[x 1] [y 2]] (+ x y)))
   (test-conversion `#t)
   (test-conversion `(set! x 3))
-  (test-conversion '(cond [1 2] [3 4]))
+  (test-conversion '(cond [1 2] [3 4] [else 5]))
   (test-conversion '(or 1 2 3))
   (test-conversion `(delay 1))
   (test-conversion `(letrec [[x 1] [y 2]] (+ x y)))
