@@ -7,4 +7,4 @@ terms: [ term ("," term)* ]
 
 tags: "{" "[" tag ("," tag)* "]" "}"
 tag: "Head" "(" LABEL "," NUMBER "," term ")"
-     | "Body" | "Alien"
+     | "Body" | "Alien" | "!Body"
