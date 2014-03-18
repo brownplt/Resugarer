@@ -1,5 +1,6 @@
 Confection is a tool that desugars and "resugars" terms according to a
-sugar specification. See http://justinpombrio.net/tell/resugar.pdf for a
+sugar specification. See the preprint
+http://cs.brown.edu/research/plt/dl/resugaring/v1/resugar.pdf for a
 description of what it does and how it works.
 
 If you want to see Confection's application to the pyret language,
@@ -18,8 +19,8 @@ This repository contains the following:
    sugars in a different format
 
 To build Confection, first install the Haskell platform. On a linux with
-'apt-get', just run 'sudo apt-get install haskell-platform'. Otherwise see
-http://www.haskell.org/platform/ to download it. Next, run
+'apt-get', just run 'sudo apt-get install haskell-platform'. Otherwise go
+to http://www.haskell.org/platform/ to download it. Next, run
 
     cd confection
     make
