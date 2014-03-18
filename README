@@ -1,0 +1,40 @@
+Confection is a tool that desugars and "resugars" terms according to a
+sugar specification. See http://justinpombrio.net/tell/resugar.pdf for a
+description of what it does and how it works.
+
+If you want to see Confection's application to the pyret language,
+checkout the pyret-lang-resugarer git repository instead.
+
+This repository contains the following:
+
+* confection/ contains the Confection tool itself. It is written in
+   Haskell and requires the Haskell platform.
+* *coq*/ contains Coq proof files giving partial proof of correctness of
+   Emulation.
+* racket/ contains the front-end attachment of Confection to the Racket
+   language.
+* prototype/ contains the initial prototype of Confection, with a Redex
+   front-end. Its functionality is approximately the same, but specifies
+   sugars in a different format
+
+To build Confection, first install the Haskell platform. On a linux with
+'apt-get', just run 'sudo apt-get install haskell-platform'. Otherwise see
+http://www.haskell.org/platform/ to download it. Next, run
+
+    cd confection
+    make
+
+To run examples in Racket, first build Confection, and then run
+'racket/test-racket-stepper.rkt' in Racket. There are many examples in
+there; uncomment out the ones you want to run.
+
+To run pyret examples, checkout the pyret-lang-resugarer repository. (The
+Pyret language has changed rapidly, so this repo captured it at a
+particular point in time and added resugaring support.)
+
+The easiest way to play around with *newly-created* sugars is to run the
+prototype. After building Confection, run either prototype/demo.rkt or
+prototype/lang-min-macros.rkt in Racket. The sugars are defined at the top
+of the file, using a syntax more similar to Scheme's syntax-rules, but the
+semantics are the same. (Be warned that the prototype has poor error
+messages, though.)
