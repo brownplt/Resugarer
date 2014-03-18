@@ -16,7 +16,7 @@
   
   ; call/cc must be spelt call/cc, and not call-with-current-continuation
   
-  (define resugarer-dir "../resugarer/Resugarer")
+  (define resugarer-dir "../confection/Confection")
   
   (define-struct Var (name value) #:transparent)
   (define-struct Func (func term)

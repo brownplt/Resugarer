@@ -1,4 +1,4 @@
-# The Resugarer #
+# Confection #
 
 Usage: Resugarer grammar-file
 
@@ -28,4 +28,4 @@ Responses:
            | [term, ..., term]
 
 Each grammar file specifies a core and surface grammar, and a set of
-rewrite rules. See racket.grammar for an example.
+rewrite rules. See racket/racket.grammar for an example.

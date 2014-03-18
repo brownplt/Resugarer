@@ -97,9 +97,9 @@ rules
   Function(args, body) ->
     Lambda(args, Apply(Id("call/cc"), [Lambda(["%RETURN"], body)]));
   Return(x) ->
-    Let([Bind(res, x)],
-        [Apply(Id("%RETURN"), [Id(res)])])
-    fresh res;
+    Let([Bind("res", x)],
+        [Apply(Id("%RETURN"), [Id("res")])]);
+#    fresh res;
 
   CpsApp(x, y, k) ->
     Apply(Cps(x),

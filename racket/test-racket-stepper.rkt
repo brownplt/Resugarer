@@ -5,7 +5,11 @@
 
 (set-debug-communication! #f)
 (set-debug-steps! #f)
+(set-hide-external-calls! #f)
 
+
+(with-resugaring
+ (test-eval (+ 1 ((function (x) (+ 1 (return (+ x 2)))) (+ 3 4)))))
 
 ;;; Core stepper tests ;;;
 
@@ -50,7 +54,7 @@
 )
 
 
-;;; Various macros ;;;
+;;; Various sugars ;;;
 
 #;(with-resugaring
   (test-eval (inc 3))
@@ -72,15 +76,6 @@
   (test-eval (+ 1 (cond [#f (+ 1 2)] [(or #f #t) (+ 2 3)] [else #f])))
   (test-eval (letrec [[x 1] [y 2]] (+ x y)))
   (test-eval (letrec [[f (lambda (n) (g n))] [g (lambda (n) (+ n 1))]] (f 3)))
-  ; BUG:
-  #;(test-eval (letrec [[double (lambda (n) (if (zero? n) 0 (+ 2 (double (- n 1)))))]] (double 3)))
-  ; BUG:
-  #;(test-eval (letrec [[is-even? (lambda (n)
-                        (or (zero? n) (is-odd? (sub1 n))))]
-                      [is-odd? (lambda (n)
-                        (and (not (zero? n)) (is-even? (sub1 n))))]]
-                     (is-odd? 11)))
-  #;(test-eval ((automaton init [init : accept]) "a"))
   
   (test-eval (let [[a (automaton
                        init
@@ -122,7 +117,7 @@
 
 ;;; CPS ;;;
 
-(with-resugaring
+#;(with-resugaring
   (set-unexpand-vars! #t)
   (test-eval ((cps (((lambda (f) (lambda (x) (f (f x))))
                      (lambda (x) (+ x 1)))
