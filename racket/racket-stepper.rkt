@@ -1,9 +1,14 @@
-(module resugar-racket racket
+(module racket-stepper racket
   (provide (all-defined-out))
+  ;(provide test-eval profile-eval test-term expand unexpand)
+  (require "term.rkt")
   (require "utility.rkt")
-  (require "resugar.rkt")
+  (require "convert.rkt")
   (require profile)
-
+  
+  (define expand (make-parameter #f))
+  (define unexpand (make-parameter #f))
+  
   ; See debug-racket-3.rkt
   ; for a much cleaner presentation of the debugging approach.
   
@@ -11,11 +16,12 @@
   
   ; call/cc must be spelt call/cc, and not call-with-current-continuation
   
+  (define resugarer-dir "../confection/Confection")
+  
   (define-struct Var (name value) #:transparent)
   (define-struct Func (func term)
     #:property prop:procedure
     (λ (self . args) (apply (Func-func self) args)))
-  (define-struct term-list* (terms))
   (define-struct Cont (stk))
   (define undefined (letrec [[x x]] x))
   (define (undefined? x) (eq? x undefined))
@@ -27,9 +33,12 @@
   (define-setting DEBUG_STEPS         set-debug-steps!         #f)
   (define-setting DEBUG_TAGS          set-debug-tags!          #f)
   (define-setting HIDE_UNDEFINED      set-hide-undefined!      #t)
+  (define-setting SILENCE             set-silence!             #f)
+  (define-setting UNEXPAND_VARS       set-unexpand-vars!       #f)
   
   
-  ;;; Keeping track of the stack ;;;
+  
+    ;;; Keeping track of the stack ;;;
   
   (define $emit 'gremlin)
   (define $val 'gremlin)
@@ -49,6 +58,35 @@
   
   ;;; Emitting Terms ;;;
   
+  (define (term->sexpr t [keep-tags #t])
+    (match t
+      [(TermList os ts)
+       (if (and keep-tags (not (empty? os)))
+           (Tagged os (map term->sexpr ts))
+           (map term->sexpr ts))]
+      [(TermAtom os t)
+       (if (and keep-tags (not (empty? os)))
+           (Tagged os (term->sexpr t))
+           (term->sexpr t))]
+      [t t]))
+  
+  (define (sexpr->term x)
+    (match x
+      [(Tagged os x)
+       (if (list? x)
+           (TermList os (map sexpr->term x))
+           (TermAtom os (sexpr->term x)))]
+      [(list xs ...)
+       (TermList (list) (map sexpr->term xs))]
+      [x x]))
+  
+  (define (pretty-term t [keep-tags #f])
+    (let [[str (format "~v" (term->sexpr t keep-tags))]]
+      (if (and (> (string-length str) 0)
+               (char=? (string-ref str 0) #\'))
+          (substring str 1)
+          str)))
+  
   (define (reconstruct-stack x [stk $stk])
     (if (empty? stk)
         x
@@ -56,43 +94,47 @@
 
   (define (display-skip t)
     (when DEBUG_STEPS
-      (display (format "SKIP: ~a\n\n" (show-term t DEBUG_TAGS)))))
+      (display (format "SKIP: ~a\n\n" (pretty-term t DEBUG_TAGS)))))
   
   (define (display-step t)
-    (display (format "~a\n" (show-term t DEBUG_TAGS)))
+    (display (format "~a\n" (pretty-term t DEBUG_TAGS)))
     (when DEBUG_STEPS (newline)))
   
   (define (emit x [id #f])
+   (if SILENCE (void)
     (if id
         (let* [[name (Var-name x)]
                [term (value->term (Var-value x))]
-               [u (unexpand-term term)]]
-          (if (could-not-unexpand? u) (emit x) (void)))
+               [u ((unexpand) (term->sexpr term))]]
+          (if (CouldNotUnexpand? u) (emit x) (void)))
         (let* [[t (value->term (reconstruct-stack x))]
-               [u (unexpand-term t)]]
-          (if (could-not-unexpand? u)
+               [u ((unexpand) (term->sexpr t))]]
+          (if (CouldNotUnexpand? u)
               (display-skip t)
-              (display-step u)))))
+              (display-step u))))))
   
+  ; TODO: It seems we would want to unexpand variables here,
+  ;       but doing so breaks everything. Why?
   (define (value->term x)
+    (define (rec x) (value->term x))
     (cond [(Func? x)
-           (value->term (Func-term x))]
-          [(term-list*? x)
-           (term-list (list) (map value->term (term-list*-terms x)))]
-          [(term-list? x)
-           (term-list (term-list-tags x) (map value->term (term-list-terms x)))]
+           (rec (Func-term x))]
+          [(TermList? x)
+           (TermList (TermList-tags x) (map rec (TermList-terms x)))]
           [(Var? x)
-           (let* [[name (Var-name x)]
-                  [term (value->term (Var-value x))]
-                  [u    (unexpand-term term)]]
-             (if DEBUG_VARS
-                 (term-list (list) (list name ':= term))
-                 (if (or (and HIDE_UNDEFINED (undefined? u))
-                         (could-not-unexpand? u))
-                     name u)))]
+           (if UNEXPAND_VARS
+               (let* [[name (Var-name x)]
+                      [term (rec (Var-value x))]
+                      [u    ((unexpand) (term->sexpr term))]]
+                 (if DEBUG_VARS
+                     (TermList (list) (list name ':= term))
+                     (if (or (and HIDE_UNDEFINED (undefined? u))
+                             (CouldNotUnexpand? u))
+                         name u)))
+               (Var-name x))]
           [(Cont? x)
-           (let [[stk (value->term (reconstruct-stack '__ (Cont-stk x)))]]
-             (term-list (list) (list '*cont* stk)))]
+           (let [[stk (rec (reconstruct-stack '__ (Cont-stk x)))]]
+             (TermList (list) (list '*cont* stk)))]
           [(and SHOW_PROC_NAMES (procedure? x))
            (or (object-name x) 'cont)]
           [else
@@ -114,10 +156,6 @@
   (define (annot/frame expr_ os_ frame_)
     (with-syntax [[expr* expr_]
                   [frame* (make-frame os_ frame_)]]
-      #;#'(begin ($push! frame*)
-               (let [[$val expr*]]
-                 ($pop!)
-                 $val)) ; insignificant
       #'(begin ($push! frame*)
                ($set-val! expr*)
                ($pop!)
@@ -126,16 +164,12 @@
   (define (make-frame os_ body_)
     (with-syntax [[(os* ...) os_]
                   [body* body_]]
-      (if (empty? os_)
-          #'(λ (__) (term-list* body*))
-          #'(λ (__) (term-list (list os* ...) body*)))))
+      #'(λ (__) (TermList (list os* ...) body*))))
   
   (define (annot/term os_ term_)
     (with-syntax [[(os* ...) os_]
                   [term* term_]]
-      (if (empty? os_)
-          #'(term-list* term*)
-          #'(term-list (list os* ...) term*))))
+      #'(TermList (list os* ...) term*)))
   
   ; Annotate function argument expressions
   (define (annot/args xs_ os_ fv_ xvs0_ xvs_ xts_)
@@ -151,7 +185,7 @@
   (define (annot/extern-call func_ args_)
     (with-syntax [[func* func_]
                   [(args* ...) args_]]
-      (annot/frame #'(func* args* ...) (list (o-external)) #'__)))
+      (annot/frame #'(func* args* ...) (list (Alien)) #'(list __))))
   
   ; Call a function, which may have been annotated or not.
   (define (annot/call func_ args_)
@@ -159,9 +193,10 @@
                   [(args* ...) args_]
                   [extern-call* (annot/extern-call func_ args_)]]
       (if HIDE_EXTERNAL_CALLS
-          #'(if (Func? func*)
-                (func* args* ...)
-                extern-call*)
+          #'(cond [(Func? func*)
+                   (func* args* ...)]
+                  [else
+                   extern-call*])
           #'(func* args* ...))))
   
   
@@ -170,49 +205,51 @@
   (define (adorn term_)
     (match term_
       
-      [(term-id os_ x_)
-       (annot/term os_ (adorn x_))]
+      [(TermAtom os_ x_)
+       (with-syntax [[(os* ...) os_]
+                     [x* x_]]
+         #'(TermAtom (list os* ...) x*))]
       
       ; (begin x)
-      [(term-list os_ (list 'begin x_))
+      [(TermList os_ (list 'begin x_))
        (with-syntax [[x* (adorn x_)]]
          (annot/term os_ #'(list 'begin x*)))]
       
       ; (begin x y ys ...)
-      [(term-list os_ (list 'begin x_ y_ ys_ ...))
+      [(TermList os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[x* (adorn x_)]
                      [y* (adorn y_)]
                      [(ys* ...) (map adorn ys_)]]
          (annot/term os_ #'(list 'begin x* y* ys* ...)))]
       
       ; (if x y z)
-      [(term-list os_ (list 'if x_ y_ z_))
+      [(TermList os_ (list 'if x_ y_ z_))
        (with-syntax [[x* (adorn x_)]
                      [y* (adorn y_)]
                      [z* (adorn z_)]]
          (annot/term os_ #'(list 'if x* y* z*)))]
       
-      ; (lambda (v ...) x)
-      [(term-list os_ (cons 'lambda rest))
-       (adorn (term-list os_ (cons 'λ rest)))]
-      
       ; (λ (v ...) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) x_))
+      [(TermList os_ (cons 'λ rest))
+       (adorn (TermList os_ (cons 'lambda rest)))]
+      
+      ; (lambda (v ...) x)
+      [(TermList os_ (list 'lambda (TermList os2_ (list (? symbol? vs_) ...)) xs_ ...))
        (with-syntax [[(vs* ...) vs_]
-                     [x* (adorn x_)]]
+                     [(xs* ...) (map adorn xs_)]]
          (with-syntax [[args* (annot/term os2_ #'(list vs* ...))]]
-           (with-syntax [[lambda* (annot/term os_ #'(list 'λ args* x*))]]
+           (with-syntax [[lambda* (annot/term os_ #'(list 'lambda args* xs* ...))]]
              #'(let [[vs* 'vs*] ...]
                  lambda*))))]
       
       ; (define v x)
-      [(term-list os_ (list 'define (? symbol? v_) x_))
+      [(TermList os_ (list 'define (? symbol? v_) x_))
        (with-syntax [[v* v_]
                      [x* (adorn x_)]]
          (annot/term os_ #'(list 'define 'v* x*)))]
       
       ; (define (f v ...) x)
-      [(term-list os_ (list 'define (term-list os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'define (TermList os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
        (with-syntax [[f* f_]
                      [(vs* ...) vs_]
                      [x* (adorn x_)]]
@@ -220,13 +257,13 @@
            (annot/term os_ #'(list 'define decl* x*))))]
       
       ; (set! v x)
-      [(term-list os_ (list 'set! (? symbol? v_) x_))
+      [(TermList os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[v* v_]
                      [x* (adorn x_)]]
          (annot/term os_ #'(list 'set! 'v* x*)))]
 
       ; (f xs ...)
-      [(term-list os_ (list f_ xs_ ...))
+      [(TermList os_ (list f_ xs_ ...))
        (with-syntax [[f* (adorn f_)]
                      [(xs* ...) (map adorn xs_)]]
          (annot/term os_ #'(list f* xs* ...)))]
@@ -250,27 +287,27 @@
   (define (annot/eval term_)
     (match term_
       
-      [(term-id os_ x_)
+      [(TermAtom os_ x_)
        (with-syntax [[x* (adorn x_)]]
          (annot/frame (annot/eval x_) os_ #'(list x*)))]
       
       ; (begin x)
-      [(term-list os_ (list 'begin x_))
+      [(TermList os_ (list 'begin x_))
        (annot/eval x_)]
       
       ; (begin x y ys ...)
-      [(term-list os_ (list 'begin x_ y_ ys_ ...))
+      [(TermList os_ (list 'begin x_ y_ ys_ ...))
        (with-syntax [[(yts* ...) (map adorn (cons y_ ys_))]
                      [(xv*) (generate-temporaries #'(x))]]
          (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'begin __ yts* ...))]
-                       [ys* (annot/eval (term-list os_ (cons 'begin (cons y_ ys_))))]
+                       [ys* (annot/eval (TermList os_ (cons 'begin (cons y_ ys_))))]
                        [term* (annot/term os_ #'(list 'begin xv* yts* ...))]]
            #'(let [[xv* x*]]
                ($emit term*)
                ys*)))]
       
       ; (if x y z)
-      [(term-list os_ (list 'if x_ y_ z_))
+      [(TermList os_ (list 'if x_ y_ z_))
        (with-syntax [[yt* (adorn y_)]
                      [zt* (adorn z_)]
                      [y* (annot/eval y_)]
@@ -283,11 +320,11 @@
                (if xv* y* z*))))]
       
       ; (lambda (v) x)
-      [(term-list os_ (cons 'lambda rest))
-       (annot/eval (term-list os_ (cons 'λ rest)))]
+      [(TermList os_ (cons 'lambda rest))
+       (annot/eval (TermList os_ (cons 'λ rest)))]
       
       ; (λ (v ...) x)
-      [(term-list os_ (list 'λ (term-list os2_ (list (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'λ (TermList os2_ (list (? symbol? vs_) ...)) x_))
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [(vs* ...) vs_]]
          (with-syntax [[body* (annot/eval x_)]
@@ -295,11 +332,11 @@
            #'(Func (λ (vs* ...) body*) term*)))]
       
       ; (define (f v ...) x)
-      [(term-list os_ (list 'define (term-list os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
+      [(TermList os_ (list 'define (TermList os2_ (list (? symbol? f_) (? symbol? vs_) ...)) x_))
        (with-syntax [[f* f_]
                      [(vs* ...) vs_]
                      [xt* (adorn/close x_ vs_)]
-                     [x* (annot/eval (term-list os_ (list 'λ (term-list os2_ vs_) x_)))]
+                     [x* (annot/eval (TermList os_ (list 'λ (TermList os2_ vs_) x_)))]
                      [(xv*) (generate-temporaries #'(x))]]
          (with-syntax [[decl* (annot/term os2_ #'(list 'f* 'vs* ...))]]
            (with-syntax [[term* (annot/term os_ #'(list 'define decl* xt*))]]
@@ -309,7 +346,7 @@
                    xv*)))))]
 
       ; (define v x)
-      [(term-list os_ (list 'define (? symbol? v_) x_))
+      [(TermList os_ (list 'define (? symbol? v_) x_))
        (with-syntax [[(xv*) (generate-temporaries #'(x))]
                      [v* v_]]
          (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'define 'v* __))]
@@ -320,7 +357,7 @@
                  xv*))))]
       
       ; (set! v x)
-      [(term-list os_ (list 'set! (? symbol? v_) x_))
+      [(TermList os_ (list 'set! (? symbol? v_) x_))
        (with-syntax [[v* v_]
                      [(xv*) (generate-temporaries #'(x))]]
          (with-syntax [[x* (annot/frame (annot/eval x_) os_ #'(list 'set! 'v* __))]
@@ -328,9 +365,9 @@
            #'(let [[xv* x*]]
                ($emit term*)
                (set! v* xv*))))]
-
+      
       ; (f xs ...)
-      [(term-list os_ (list f_ xs_ ...))
+      [(TermList os_ (list f_ xs_ ...))
        (let [[xvs_ (map (λ (_) (with-syntax [[(v) (generate-temporaries #'(x))]] #'v)) xs_)]]
        (with-syntax [[(fv*) (generate-temporaries #'(f))]
                      [(xvs* ...) xvs_]
@@ -366,27 +403,75 @@
                 (f cont))))))
   
   
+
+  
+  ;;; Communication ;;;
+  
+  (define (send-command cmd out)
+  (when DEBUG_COMMUNICATION (display cmd))
+  (display cmd out)
+  (flush-output out))
+  
+  (define (read-port port [str ""])
+    (let [[line (read-line port)]]
+      (if (eof-object? line)
+          str
+          (read-port port (string-append str line)))))
+  
+  (define (receive-response in err)
+    (let [[response (read-line in)]]
+      (when DEBUG_COMMUNICATION (display response) (newline) (newline))
+      (cond [(eof-object? response)
+             (display (read-port err)) (newline)
+             (fail "Received EOF")]
+            [(strip-prefix "success: " response)
+             => (λ (t) (term->sexpr (read-term t)))]
+            [(strip-prefix "failure: " response)
+             => (λ (_) (CouldNotUnexpand))]
+            [(strip-prefix "error: " response)
+             => (λ (msg) (fail msg))])))
+  
+  (define-syntax-rule (with-resugaring expr ...)
+    (begin
+      (current-locale "en_US.UTF-8") ; How to make Racket read in unicode?
+      (let-values [[(resugarer in out err)
+                    (subprocess #f #f #f resugarer-dir "racket.grammar")]]
+        (parameterize
+            [[expand (λ (t)
+                       (send-command (format "desugar Expr ~a\n" (show-term t)) out)
+                       (receive-response in err))]
+             [unexpand (λ (t)
+                         (send-command (format "resugar Expr ~a\n" (show-term t)) out)
+                         (receive-response in err))]]
+          (let [[result (begin expr ...)]]
+            (subprocess-kill resugarer #t)
+            result)))))
+  
+  (define-syntax-rule (without-resugaring expr ...)
+    (parameterize [[expand (λ (t) t)]
+                   [unexpand (λ (t) t)]]
+      expr ...))
+  
+  
+  
   ;;; Testing ;;;
   
   (define-syntax-rule (test-term ts ...)
-    (syntax->datum (annotate-terms (list (make-term ts) ...))))
+    (syntax->datum (annotate-terms (list 'ts ...))))
   
-  (define-syntax-rule (test-expand-term ts ...)
-    (syntax->datum (annotate-terms (list (expand-term (make-term ts)) ...))))
+  (define-syntax-rule (test-expand ts ...)
+    (syntax->datum (annotate-terms (list (sexpr->term ((expand) 'ts)) ...))))
   
   (define-syntax-rule (test-eval ts ...)
-    (eval (annotate-terms (list (expand-term (make-term ts)) ...))
-          (current-namespace)))
+    (begin (newline)
+           (eval (annotate-terms (list (sexpr->term ((expand) 'ts)) ...))
+                 (current-namespace))))
   
-  (define-syntax-rule (test-silent-eval ts ...)
-    (eval (annotate-terms (list (expand-term (make-term ts)) ...)
-                          (λ x (void)))
-          (current-namespace)))
-  
-  (define-syntax-rule (profile-silent-eval t)
-    (with-syntax [[prog* (annotate-term (expand-term (make-term t)) (λ x (void)))]]
+  (define-syntax-rule (profile-eval t)
+    (with-syntax [[prog* (annotate-term (expand (make-term t)) (λ x (void)))]]
       (eval #'(profile-thunk (λ () prog*)) (current-namespace))))
-  
+
+    
   (define (my-external-function f)
     (f (f 17)))
   
@@ -395,4 +480,4 @@
   
   (define (string-rest x)
     (substring x 1))
-)
+  )

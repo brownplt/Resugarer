@@ -9,6 +9,7 @@ import Control.Monad (liftM, liftM2, zipWithM, when, replicateM)
 import System.Random (randomIO)
 import System.IO.Unsafe (unsafePerformIO) -- it's only to generate nonces, I swear!
 import Data.Char (chr)
+import Debug.Trace (trace)
 
 
 newtype Var = Var String deriving (Eq, Ord)
@@ -17,8 +18,12 @@ newtype Label = Label String deriving (Eq, Ord)
 type MacroTable = Map Label Macro
 
 data Macro = Macro Label [Rule]
+            
+data Rule = Rule Pattern Pattern [Var] RuleFlags
+            deriving (Eq) -- from, to, fresh vars
 
-data Rule = Rule Pattern Pattern [Var] deriving (Eq) -- from, to, fresh vars
+data RuleFlags = RuleFlags Bool -- overlap override
+                 deriving (Eq)
 
 data Info = Info Bool Bool -- transp marked, always transparent
 noInfo = Info False False
@@ -71,7 +76,7 @@ data UnifyFailure = UnifyFailure Pattern Pattern
 
 -- This means something really went wrong;
 -- should never occur on good-faith user input.
-data ResugarError = NoMatchingCase Label Term
+data ResugarError = NoMatchingCase Label Term [Rule]
                   | NoSuchMacro Label
                   | NoSuchCase Label Int
                   | UnboundSubsVar Var
@@ -236,8 +241,28 @@ unify (PConst c)   (PConst c')       | c == c' = return (PConst c)
 unify (PVar v)     p                           = return p
 unify p            (PVar v)                    = return p
 unify (PTag o p)   (PTag o' p')      | o == o' = liftM (PTag o) (unify p p')
-unify (PRep ps p)  (PRep ps' p')              = undefined
-unify (PNode i l ps) (PNode _ l' ps')    | l == l' && length ps == length ps'
+unify (PList ps)   (PList qs)        | length ps == length qs
+  = liftM PList (zipWithM unify ps qs)
+unify (PList ps)   (PRep qs q)       | length qs <= length ps = do
+  head <- zipWithM unify (take (length qs) ps) qs
+  tail <- zipWithM unify (drop (length qs) ps) (repeat q)
+  return (PRep (head ++ tail) q)
+unify (PRep ps p)  (PList qs)        | length ps <= length qs = do
+  head <- zipWithM unify ps         (take (length ps) qs)
+  tail <- zipWithM unify (repeat p) (drop (length ps) qs)
+  return (PRep (head ++ tail) p)
+unify (PRep ps p) (PRep qs q)        | length ps <= length qs = do
+  head <- zipWithM unify ps (take (length ps) qs)
+  midd <- zipWithM unify (repeat p) (drop (length ps) qs)
+  tail <- unify p q
+  return (PRep (head ++ midd) tail)
+unify (PRep ps p) (PRep qs q)        | length ps > length qs = do
+  head <- zipWithM unify (take (length qs) ps) qs
+  midd <- zipWithM unify (drop (length qs) ps) (repeat q)
+  tail <- unify p q
+  return (PRep (head ++ midd) tail)
+unify (PRep ps p)  (PRep ps' p')               = error "unify: "
+unify (PNode i l ps) (PNode _ l' ps') | l == l' && length ps == length ps'
   = liftM (PNode i l) (zipWithM unify ps ps')
 unify p q = Left (UnifyFailure p q)
 
@@ -245,7 +270,15 @@ subsumed :: Pattern -> Pattern -> Bool
 subsumed _            (PVar _)                 = True
 subsumed (PConst c)   (PConst c')    | c == c' = True
 subsumed (PTag o p)   (PTag o' p')   | o == o' = subsumed p p'
-subsumed (PRep ps p)  (PRep ps' p')            = undefined
+subsumed (PList ps)   (PList qs)     | length ps == length qs
+  = and (zipWith subsumed ps qs)
+subsumed (PList ps) (PRep qs q)      | length ps >= length qs
+  = and (zipWith subsumed (take (length qs) ps) qs) &&
+    and (zipWith subsumed (drop (length qs) ps) (repeat q))
+subsumed (PRep ps p)  (PRep qs q)    | length ps >= length qs
+  = and (zipWith subsumed (take (length qs) ps) qs) &&
+    and (zipWith subsumed (drop (length qs) ps) (repeat q)) &&
+    subsumed p q
 subsumed (PNode _ l ps) (PNode _ l' ps') | l == l' && length ps == length ps'
   = and (zipWith subsumed ps ps')
 subsumed _            _                        = False
@@ -271,10 +304,10 @@ addFreshVars (Var f:fs) env =
 expandMacro :: Macro -> Term -> Either ResugarFailure (Int, Term)
 expandMacro (Macro name cs) t = expandCases 0 cs
   where
-    expandCases _ [] = Left (ResugarError (NoMatchingCase name t))
+    expandCases _ [] = Left (ResugarError (NoMatchingCase name t cs))
     expandCases i (c:cs) = eitherOr (expandCase i c) (expandCases (i + 1) cs)
     
-    expandCase i (Rule p p' fs) = do
+    expandCase i (Rule p p' fs _) = do
       e <- match t p -- (bodyWrap False p) -- no good reason for LHS !s
       t <- subs (addFreshVars fs e) (bodyWrap True p')
       return (i, t)
@@ -285,7 +318,7 @@ unexpandMacro (Macro l cs) (i, t') t =
   then Left (ResugarError (NoSuchCase l i))
   else unexpandCase (cs !! i)
     where
-      unexpandCase (Rule p p' _) = do
+      unexpandCase (Rule p p' _ _) = do
         e <- match t p -- (bodyWrap False p)
         e' <- match t' (bodyWrap True p')
         subs (composeEnvs e e') p
@@ -303,15 +336,18 @@ wellFormedMacro (Macro l cs) = do
   mapM_ disjointCases (allDistinctPairs cs)
   mapM_ (wellFormedCase l) cs
   where
-    disjointCases ((Rule p _ _), (Rule q _ _)) = case unify p q of
-      Left _ -> return ()
-      Right r -> Left (CasesOverlap l p q r)
+    disjointCases ((Rule p _ _ (RuleFlags True)), _) =
+      return ()
+    disjointCases ((Rule p _ _ _), (Rule q _ _ _)) =
+      case unify p q of
+        Left _ -> return ()
+        Right r -> Left (CasesOverlap l p q r)
 
 wellFormedCase :: Label -> Rule -> Either WFError ()
-wellFormedCase l (Rule p q fs) = do
+wellFormedCase l (Rule p q fs _) = do
   checkDuplicateVar p
   -- TODO: figure out how to handle dup vars systematically
-  --  checkDuplicateVar q
+  -- checkDuplicateVar q
   wellFormedPattern l p
   wellFormedPattern l q
   varSubset p q
@@ -413,3 +449,4 @@ mapWithKeyM :: (Monad m, Ord k) => (k -> a -> m b) -> Map k a -> m (Map k b)
 mapWithKeyM f m = liftM Map.fromList (mapM f' (Map.toList m))
   where
     f' (k, x) = f k x >>= return . (\x -> (k, x))
+

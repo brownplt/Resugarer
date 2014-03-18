@@ -52,6 +52,8 @@ surface
     Function : [String] * Expr -> Expr;
     Return : Expr -> Expr;
     TranspTest : String * Expr -> Expr;
+    CpsApp : Expr * Expr * String -> Expr;
+    Cps : Expr -> Expr;
 
 
 rules
@@ -99,6 +101,32 @@ rules
   Function(args, body) ->
     Lambda(args, Apply(Id("call/cc"), [Lambda(["%RETURN"], body)]));
   Return(x) ->
-    Let([Bind(res, x)],
-        [Apply(Id("%RETURN"), [Id(res)])])
-    fresh res;
+    Let([Bind("res", x)],
+        [Apply(Id("%RETURN"), [Id("res")])]);
+#    fresh res;
+
+  CpsApp(x, y, k) ->
+    Apply(Cps(x),
+      [Lambda([m],
+        Apply(Cps(y),
+          [Lambda([n],
+            Apply(Id(m),
+              [Id(n), Lambda([a], Apply(Id(k), [Id(a)]))]))]))])
+  fresh m
+  fresh n
+  fresh a;
+
+  Cps(Lambda([x], y)) ->  # Only single argument funs for now
+    Lambda([k],
+      Apply(Id(k),
+        [Lambda([x, k],
+           Apply(Cps(y), [Lambda([m], Apply(Id(k), [Id(m)]))]))]))
+  fresh k
+  fresh m
+  unsafe_overlap;
+
+  Cps(Apply(x, [y])) ->
+    Lambda(["*cont*"], !CpsApp(x, y, "*cont*"))
+  unsafe_overlap;
+
+  Cps(x) -> Lambda(["*cont*"], !Apply(Id("*cont*"), [x]));

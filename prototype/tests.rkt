@@ -19,9 +19,6 @@
 (define-syntax-rule (test-pattern p)
   (sexpr->pattern 'p (list 'x 'xs 'y 'ys 'z 'zs)))
 
-;(define-syntax-rule (test-template p)
-;  (sexpr->template 'p test-vars))
-
 (define-syntax test-subs-rhs
   (syntax-rules (@ @...)
     [(_ (@... (x ...) y (z ...)))
@@ -235,25 +232,6 @@
 ;;;;;;;;;;;;;;;;;;
 ;; Environments ;;
 ;;;;;;;;;;;;;;;;;;
-#|
-(check-equal? (hash-union (mk-hash (x a) (y b)) (mk-hash (z c)))
-              (mk-hash (x a) (y b) (z c)))
-
-(check-equal? (inter-list-envs (set 'x 'y) (list (mk-hash (x a) (y b))
-                                                 (mk-hash (x b) (y c))))
-              (make-immutable-hash
-               (list (cons 'x (inter-list (list (constant 'a) (constant 'b))))
-                     (cons 'y (inter-list (list (constant 'b) (constant 'c)))))))
-
-(check-equal? (free-vars (ellipsis (list (pvar 'x) (literal 'a))
-                                     (plist (list (constant 'b) (pvar 'y)))
-                                     (list (constant 'c) (pvar 'z) (pvar 'x))))
-              (set 'x 'y 'z))
-
-(check-equal? (replace (mk-hash (x y) (y (a)))
-                       (test-pattern '((x y) (x a y) ... b z)))
-              (test-pattern '((y (a)) (y a (a)) ... b z)))
-|#
 
 (check-exn OccursCheck? (thunk (bind 'x (pvar 'x) empty-env)))
 (check-exn OccursCheck? (thunk (bind 'x (pvar 'y) (singleton-env 'y (pvar 'x)))))
@@ -335,79 +313,4 @@
 
 (check-equal? (show-term (expand-term (make-term (M (a) b c))))
               "'(((a) b) ((a) c))")
-
-#|
-;;;;;;;;;;;;;;
-;;; Letrec ;;;
-;;;;;;;;;;;;;;
-
-(define-syntax reclet-lets
-  (syntax-rules ()
-    [(reclet-lets () b) b]
-    [(reclet-lets (v vs ...) b)
-     (let ((v "gremlin")) (reclet-lets (vs ...) b))]))
-
-(define-syntax reclet-sets
-  (syntax-rules ()
-    [(reclet-sets () b) b]
-    [(reclet-sets ((v x) (vs xs) ...) b)
-     (begin (set! v x) (reclet-sets ((vs xs) ...) b))]))
-
-(define-syntax reclet
-  (syntax-rules ()
-    [(reclet ((v x) ...) b)
-     (reclet-lets (v ...) (reclet-sets ((v x) ...) b))]))
-
-(check-equal?
-  (reclet ((x 1) (y (+ x 1)) (x 2) (z (+ x y))) (+ x z))
-  6)
-
-(check-equal? (reclet ((x x)) x) "gremlin")
-
-(check-equal?
- (let ((x 1)) (reclet ((x 2)) x))
- 2)
-
-(check-equal?
- ((λ (x) (reclet ((x 2)) x)) 1)
- 2)
-
-(check-equal?
- (reclet ((x 2)) (let ((x 1)) x))
- 1)
-
-(check-equal?
- (reclet ((x 1) (y 2))
-   (let ((x 3))
-     (reclet ((y 4))
-             (+ x y))))
- 7)
-
-|#
-
-#|
-(define (tag-cond2 id e)
-  (Tag e id (list-ref (Macro-cases (lookup-macro 'cond)) 1)))
-
-(check-equal?
-  (unexpand (tag-cond2 17 (make-plist (tag-cond2 17 (constant 'if))
-                                      (tag-cond2 17 (constant 'false))
-                                      (tag-cond2 17 (constant 'true))
-                                      (tag-cond2 17 (make-plist
-                                        (tag-cond2 17 (constant 'void)))))))
-  (test-pattern (cond (false true))))
-
-(check-exn NotUnexpandable? (thunk
-  (unchecked-unexpand
-   (tag-cond2 17 (make-plist (tag-cond2 17 (constant 'if))
-                             (tag-cond2 17 (constant 'false))
-                             (tag-cond2 18 (constant 'true))
-                             (tag-cond2 17 (make-plist
-                                            (tag-cond2 17 (constant 'void)))))))))
-|#
-
-;(show-pattern (expand-macro (lookup-macro 'cond) (test-pattern (cond (a 1) (else 2)))))
-;(show-pattern (expand (test-pattern (cond (a 1) (else 2)))))
-;(show-pattern (unexpand (expand (test-pattern (cond (a 1) (else 2))))))
-;(show-pattern (expand-macro (lookup-macro 'cond) (test-pattern (cond (false true)))))
 

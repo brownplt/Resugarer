@@ -8,19 +8,9 @@
   ;;; Macros ;;;
   ;;;;;;;;;;;;;;
 
-; Examples:
-; * cond         DONE
-; * let          DONE
-; * letrec       DONE?
-; * automata     DONE
-; * cps          NOT DONE
-; * var lifting  NOT DONE
-; * traffic/elevator/nonpl
-
 ; * Sometimes a macro RHS must be wrapped in 'begin' for two reasons:
 ;   - So that it's reduction shows as a step (otherwise, e.g. (or (+ 1 2)) -> 3)
 ;   - So that a calling macro doesn't inadvertently tag a constant.
-
 
 (define-macro Thunk
   [(Thunk body)
@@ -42,12 +32,6 @@
 (define-macro Letrec
   [(Letrec x e b)
    (Let x 0 (begin (set! x e) b))])
-
-;(define-macro Lets () (Let)
-;  [(Lets [^ [^ x e] xs ...] b)
-;   (Let x e (Lets [^ xs ...] b))]
-;  [(Lets [^] b)
-;   b])
 
 (define-macro Lambdas
   [(Lambdas [^ var] body)
@@ -83,14 +67,6 @@
   [(AmbCond [^ x y] z zs ...) (if x (amb y (! AmbCond z zs ...))
                                     (! AmbCond z zs ...))])
 
-;(define-macro std-Letrecs () (Let Lets Thunk Force)
-;  [(std-Letrec [^ [^ var init] ...] body)
-;   (Lets [^ [^ var 0] ...]
-;         (Lets [^ [^ var (Let temp init (Thunk (set! var temp)))] ...]
-;               (Let bod (Thunk body)
-;                 (begin (begin (Force var) ...)
-;                        (Force bod)))))])
-
 ; TODO: bug!
 (define-macro Condfalse 
   [(Condfalse)
@@ -119,7 +95,6 @@
     ...)
    (Letrecs [^ [^ state (ProcessState response ...)] ...]
      (lambda x (! apply init-state x)))])
-;     init-state)])
 
 (define-macro List
   [(List) empty]
@@ -151,6 +126,17 @@
                   (eq? x ""))]]
      (! apply init input))])
 
+
+
+
+
+;;; Tests are here ;;;
+
+; uncomment the tests you want to run
+
+(test-eval (Cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ $else (+ 5 6)]))
+
+#;(begin
 (test-eval (+ 1 2))
 (test-eval (apply (lambda x (+ x 1)) (+ 1 2)))
 (test-eval (Let x 3 (+ x x)))
@@ -159,7 +145,6 @@
 (test-eval (Lets [^ [^ x 1] [^ y 2]] (+ x y)))
 (test-eval (Letrecs [^ [^ x 1]] x))
 (test-eval (Letrecs [^ [^ x 1] [^ y 2]] (+ x y)))
-(test-eval (Cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ $else (+ 5 6)]))
 (test-eval (+ 1 (Cond [^ #f (+ 1 2)] [^ (Or #f #t) (+ 2 3)])))
 (test-eval (Or (eq? 1 2) (eq? 2 2) (eq? 3 2)))
 (test-eval (Lets [^ [^ f (λ x (+ x 1))]] (apply f 3)))
@@ -184,7 +169,7 @@
                     [^ "r" $-> end init]]
          [^ end $:  "accept"])
    (apply M "carcadr")))
-#;(test-eval
+(test-eval
  (Let M (Automaton
          init
          [^ init $: [^ "c" $-> more]]
@@ -194,25 +179,11 @@
          [^ end $:  "accept"])
    (apply M "cdad")))
 
-#;(test-trace (amb (+ 1 2) (+ 3 4) (+ 5 6)))
-#;(test-trace (AmbCond [^ #t (+ 1 2)]
+(test-trace (amb (+ 1 2) (+ 3 4) (+ 5 6)))
+(test-trace (AmbCond [^ #t (+ 1 2)]
                      [^ #f (+ 3 4)]
                      [^ #t (+ 5 6)]))
 
-;(test-eval (Letrecs [^ [^ f (λ n (if (eq? n 0) 77 (apply f (! + 0 0))))]]
-;                    (apply f (+ 1 2))))
-
-;(test-eval (std-Letrecs [^ [^ x 1]] x))
-
-
-;(test-trace (Let x 1 x))
-;(test-trace (+ (+ 1 2) (+ 3 4)))
-;(test-trace (+ 1 2))
-;(test-trace (Letrec x x x))
-;(test-trace (Letrecs [^ [^ x (lambda z y)] [^ y (lambda z x)]]
-;                     (apply x y)))
-;(test-trace (Cond [^ (empty? (cons 1 2)) 3] [^ #f 4] [^ else (+ 5 6)]))
-;(test-trace (+ 1 (Cond (^ (eq? 1 2) (+ 1 2)) (^ (eq? 1 3) (+ 3 4)))))
-;(test-trace (Lets [^ [^ x (+ 1 1)] [^ y (+ 1 2)]] (+ x y)))
-;(test-trace (Letrec x x (+ x x)))
-;(test-trace (Letrecs [^ [^ x (lambda z x)] [^ y (lambda z y)]] (apply x y)))
+(test-eval (Letrecs [^ [^ f (λ n (if (eq? n 0) 77 (apply f (! + 0 0))))]]
+                    (apply f (+ 1 2))))
+)

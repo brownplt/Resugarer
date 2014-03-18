@@ -4,7 +4,7 @@
   (require ragg/support)
   (require (except-in rackunit fail))
   (require racket/serialize)
-  (require "data.rkt")
+  (require "term.rkt")
   (require "utility.rkt")
   (require "grammar.rkt")
   
@@ -34,7 +34,7 @@
          "Body"]
         [(MacTranspBody)
          "!Body"]
-        [(Alien) ; Not yet supported by Resugarer
+        [(Alien)
          "Alien"]))
     (define (show-list xs)
       (brackets (comma-sep xs)))
@@ -81,6 +81,10 @@
        (show-node 'Function (show-list (map show-symbol vs)) (show-term x))]
       [(list 'return x)
        (show-node 'Return (show-term x))]
+      [(list 'cps-app x y (? symbol? k))
+       (show-node 'CpsApp (show-term x) (show-term y) (show-symbol k))]
+      [(list 'cps x)
+       (show-node 'Cps (show-term x))]
       ; Core
       [(? boolean? t)
        (if t (show-node 'True) (show-node 'False))]
@@ -192,6 +196,10 @@
          (cons 'automaton (cons (string->symbol init) (map convert cases)))]
         [(Node 'TranspTest (list v x))
          (list 'transptest (string->symbol v) (convert x))]
+        [(Node 'CpsApp (list x y k))
+         (list 'cps-app (convert x) (convert y) (string->symbol k))]
+        [(Node 'Cps (list x))
+         (list 'cps (convert x))]
     ; Value
         [(Node 'Value (list x))
          (deserialize (read (open-input-string x)))]

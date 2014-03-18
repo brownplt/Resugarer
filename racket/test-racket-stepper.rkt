@@ -1,12 +1,19 @@
 #lang racket
 
-(require "term.rkt")
+(require "convert.rkt")
 (require "racket-stepper.rkt")
 
 (set-debug-communication! #f)
 (set-debug-steps! #f)
+(set-hide-external-calls! #f)
 
-(without-resugaring
+
+(with-resugaring
+ (test-eval (+ 1 ((function (x) (+ 1 (return (+ x 2)))) (+ 3 4)))))
+
+;;; Core stepper tests ;;;
+
+#;(without-resugaring
  (test-eval "blah")
  (test-eval (lambda (x) x))
  (test-eval (+ (+ 1 2) 3))
@@ -15,7 +22,10 @@
  (test-eval ((lambda (x) (begin x)) 1))
  (test-eval ((lambda (x) (if (set! x (+ x 1)) (cons x x) x)) 3)))
 
-(with-resugaring
+
+;;; Sugar-free tests ;;;
+
+#;(with-resugaring
  (test-eval "blah")
  (test-eval (lambda (x) x))
  (test-eval 3)
@@ -41,7 +51,12 @@
   (test-eval ((lambda (x) (if (set! x (+ x 1)) (cons x x) x)) 3))
   (test-eval ((lambda (x) (begin (set! x (+ x 1)) (+ x 1))) 3))
   (test-eval ((lambda (f) (begin (set! f (lambda (x) x)) (f 4))) 3))
-  
+)
+
+
+;;; Various sugars ;;;
+
+#;(with-resugaring
   (test-eval (inc 3))
   (test-eval (inc (inc 3)))
   (test-eval (inc (inc (inc 3))))
@@ -61,15 +76,6 @@
   (test-eval (+ 1 (cond [#f (+ 1 2)] [(or #f #t) (+ 2 3)] [else #f])))
   (test-eval (letrec [[x 1] [y 2]] (+ x y)))
   (test-eval (letrec [[f (lambda (n) (g n))] [g (lambda (n) (+ n 1))]] (f 3)))
-  ; BUG:
-  #;(test-eval (letrec [[double (lambda (n) (if (zero? n) 0 (+ 2 (double (- n 1)))))]] (double 3)))
-  ; BUG:
-  #;(test-eval (letrec [[is-even? (lambda (n)
-                        (or (zero? n) (is-odd? (sub1 n))))]
-                      [is-odd? (lambda (n)
-                        (and (not (zero? n)) (is-even? (sub1 n))))]]
-                     (is-odd? 11)))
-  #;(test-eval ((automaton init [init : accept]) "a"))
   
   (test-eval (let [[a (automaton
                        init
@@ -92,6 +98,12 @@
                      (a "card"))))
   (test-eval (begin (transptest x (let ((y 1)) y))))
   
+)
+
+
+;;; call/cc ;;;
+
+#;(with-resugaring
   (set-show-continuations! #t)
   (set-hide-external-calls! #f)
  
@@ -102,5 +114,19 @@
   (test-eval (call/cc (lambda (k) (k (+ (+ 1 2) (+ 3 4))))))
   (test-eval ((call/cc call/cc) (lambda (x) 3)))
  ;(test-eval ((call/cc call/cc) (call/cc call/cc))) ;-- loops
+)
 
+
+;;; CPS ;;;
+
+#;(with-resugaring
+  (set-unexpand-vars! #t)
+  (test-eval ((cps (((lambda (f) (lambda (x) (f (f x))))
+                     (lambda (x) (+ x 1)))
+                    (+ 1 2)))
+              (lambda (result) result)))
+  (test-eval ((cps ((lambda (x) (+ x 1)) 3))
+              (lambda (result) result)))
+  (test-eval ((cps (((lambda (x) (lambda (y) (+ x y))) 1) 2))
+              (lambda (result) result)))
 )
