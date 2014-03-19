@@ -26,8 +26,9 @@ to http://www.haskell.org/platform/ to download it. Next, run
     make
 
 To run examples in Racket, first build Confection, and then run
-'racket/test-racket-stepper.rkt' in Racket. There are many examples in
-there; uncomment out the ones you want to run.
+'test-racket-stepper.rkt' from within the 'racket' directory in
+Racket. There are many examples in there; uncomment out the ones you want
+to run.
 
 To run pyret examples, checkout the pyret-lang-resugarer repository. (The
 Pyret language has changed rapidly, so this repo captured it at a
