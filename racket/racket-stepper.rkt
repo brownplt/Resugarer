@@ -59,16 +59,17 @@
   ;;; Emitting Terms ;;;
   
   (define (term->sexpr t [keep-tags #t])
-    (match t
-      [(TermList os ts)
-       (if (and keep-tags (not (empty? os)))
-           (Tagged os (map term->sexpr ts))
-           (map term->sexpr ts))]
-      [(TermAtom os t)
-       (if (and keep-tags (not (empty? os)))
-           (Tagged os (term->sexpr t))
-           (term->sexpr t))]
-      [t t]))
+    (let [[rec (lambda (t) (term->sexpr t keep-tags))]]
+      (match t
+        [(TermList os ts)
+         (if (and keep-tags (not (empty? os)))
+             (Tagged os (map rec ts))
+             (map rec ts))]
+        [(TermAtom os t)
+         (if (and keep-tags (not (empty? os)))
+             (Tagged os (rec t))
+             (rec t))]
+        [t t])))
   
   (define (sexpr->term x)
     (match x
