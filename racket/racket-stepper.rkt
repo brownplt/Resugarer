@@ -23,7 +23,7 @@
     #:property prop:procedure
     (λ (self . args) (apply (Func-func self) args)))
   (define-struct Cont (stk))
-  (define undefined (letrec [[x x]] x))
+  (define undefined 'undefined)
   (define (undefined? x) (eq? x undefined))
   
   (define-setting SHOW_PROC_NAMES     set-show-proc-names!     #t)
